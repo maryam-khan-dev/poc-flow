@@ -1,4 +1,4 @@
-import { types } from "mediasoup";
+import { types as MediasoupTypes } from "mediasoup";
 import os from "os";
 const config = {
   port: 3030,
@@ -22,7 +22,7 @@ const config = {
     rtcMinPort: 40_000,
     rtcMaxPort: 40_100,
     disableLiburing: false, // https://github.com/axboe/liburing
-  } as types.WorkerSettings,
+  } as MediasoupTypes.WorkerSettings,
   routerMediaCodecs: [
     {
       kind: "audio",
@@ -46,6 +46,6 @@ const config = {
       clockRate: 90000,
       parameters: {},
     },
-  ] as types.RtpCodecCapability[],
+  ] as MediasoupTypes.RtpCodecCapability[],
 };
 export default config;
