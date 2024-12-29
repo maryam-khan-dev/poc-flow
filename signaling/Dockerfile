@@ -8,6 +8,6 @@ FROM node:20-slim AS runtime
 WORKDIR /app
 COPY --from=build /app .
 COPY ./config ./config
-COPY ./mediasoup.ts .
-COPY ./error.ts .
+COPY ./lib ./lib 
+COPY ./actions ./actions
 CMD npx nodemon --exec tsx server.ts
