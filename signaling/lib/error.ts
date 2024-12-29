@@ -1,5 +1,5 @@
 import { SigningKey } from "jwks-rsa";
-import { types as MediasoupTypes } from "mediasoup";
+import type { types as MediasoupTypes } from "mediasoup";
 /**
  * Custom error for when router cannot consume data due to incompatible RTP capabilities.
  */
@@ -24,17 +24,14 @@ export class CannotConsumeError extends Error {
  * Custom error for when WebRTC Transport creation failed.
  */
 export class WebRtcTransportCreationError extends Error {
-  public readonly connectionId: string;
   public readonly userId: string;
   public readonly webRtcTransportOptions: MediasoupTypes.WebRtcTransportOptions;
   constructor(
-    connectionId: string,
     userId: string,
     webRtcTransportOptions: MediasoupTypes.WebRtcTransportOptions,
     description?: string
   ) {
     super(description ?? "WebRTCTransport creation failed.");
-    this.connectionId = connectionId;
     this.userId = userId;
     this.webRtcTransportOptions = webRtcTransportOptions;
     Error.captureStackTrace(this, this.constructor);

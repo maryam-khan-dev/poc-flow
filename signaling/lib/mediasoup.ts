@@ -1,16 +1,12 @@
-import mediasoup, { types as MediasoupTypes } from "mediasoup";
-import {
-  CannotConsumeError,
-  WebRtcTransportCreationError,
-} from "@/signaling/error";
-interface TransportResponse {
-  fullTransport: MediasoupTypes.WebRtcTransport;
-  clientTransportOptions: Pick<
-    MediasoupTypes.WebRtcTransport,
-    "id" | "iceCandidates" | "iceParameters" | "dtlsParameters"
-  >;
-}
+import mediasoup from "mediasoup";
+import type { types as MediasoupTypes } from "mediasoup";
+import { WebRtcTransportCreationError, CannotConsumeError } from "./error";
+import { WebSocketActions } from "../actions/websocket";
+import { WebSocket } from "uWebSockets.js";
+import { UserData } from "../ServerTypes";
 export default class Mediasoup {
+  nextMediasoupWorkerIdx: number = 0;
+  workers: Array<MediasoupTypes.Worker> = [];
   constructor() {}
   /**
    * Creates workers with provided settings.
@@ -22,8 +18,6 @@ export default class Mediasoup {
     numWorkers: number,
     workerSettings: MediasoupTypes.WorkerSettings
   ) {
-    const workers: Array<MediasoupTypes.Worker> = [];
-
     for (let i = 0; i < numWorkers; i++) {
       //
       const worker = await mediasoup.createWorker(workerSettings);
@@ -36,7 +30,7 @@ export default class Mediasoup {
         setTimeout(() => process.exit(1), 2000);
       });
 
-      workers.push(worker);
+      this.workers.push(worker);
 
       /*
                   setInterval(async () => {
@@ -46,22 +40,19 @@ export default class Mediasoup {
                       console.info('mediasoup Worker dump', { worker_pid: worker.pid, dump: dump });
                   }, 120000);
                   */
-      return workers;
+      return this.workers;
     }
   }
   /**
    * Gets the next Mediasoup worker, distributing the load in round-robin fashion.
-   * @param workers - List of current workers
    * @param nextMediasoupWorkerIdx - Next Mediasoup worker index
-   * @returns Array containing next worker and updated value of nextMediasoupWorkerIdx
+   * @returns next worker
    */
-  async getNextMediasoupWorker(
-    workers: Array<MediasoupTypes.Worker>,
-    nextMediasoupWorkerIdx: number
-  ) {
-    const worker = workers[nextMediasoupWorkerIdx];
-    if (++nextMediasoupWorkerIdx === workers.length) nextMediasoupWorkerIdx = 0;
-    return [worker, nextMediasoupWorkerIdx];
+  getNextMediasoupWorker() {
+    const worker = this.workers[this.nextMediasoupWorkerIdx];
+    if (++this.nextMediasoupWorkerIdx === this.workers.length)
+      this.nextMediasoupWorkerIdx = 0;
+    return worker;
   }
 
   /**
@@ -113,14 +104,12 @@ export default class Mediasoup {
    * Create a WebRTC transport.
    * @param router The router to create transport on
    * @param webRtcTransportOptions The options for configuring transport
-   * @param connectionId The connection ID associated with this event in signaling server
    * @param userId The user ID associated with this event in signaling server
    * @returns Created transport
    */
   async createWebRtcTransport(
     router: MediasoupTypes.Router,
     webRtcTransportOptions: MediasoupTypes.WebRtcTransportOptions,
-    connectionId: string,
     userId: string
   ) {
     console.log("webRtcTransportOptions ----->", webRtcTransportOptions);
@@ -129,25 +118,14 @@ export default class Mediasoup {
       webRtcTransportOptions
     );
     if (!transport) {
-      throw new WebRtcTransportCreationError(
-        connectionId,
-        userId,
-        webRtcTransportOptions
-      );
+      throw new WebRtcTransportCreationError(userId, webRtcTransportOptions);
     }
-    const {
-      id: transportId,
-      type,
-      iceParameters,
-      iceCandidates,
-      dtlsParameters,
-    } = transport;
+    const { id: transportId, type } = transport;
     console.log("Transport created", { transportId, transportType: type });
 
     transport.on("icestatechange", (iceState: MediasoupTypes.IceState) => {
       if (iceState === "disconnected" || iceState === "closed") {
         console.log('Transport closed "icestatechange" event', {
-          connectionId,
           userId,
           transportId,
           iceState,
@@ -156,9 +134,8 @@ export default class Mediasoup {
       }
     });
 
-    transport.on("sctpstatechange", (sctpState: MediasoupTypes.sctpState) => {
+    transport.on("sctpstatechange", (sctpState: MediasoupTypes.SctpState) => {
       console.log('Transport "sctpstatechange" event', {
-        connectionId,
         userId,
         transportId,
         sctpState,
@@ -168,7 +145,6 @@ export default class Mediasoup {
     transport.on("dtlsstatechange", (dtlsState: MediasoupTypes.DtlsState) => {
       if (dtlsState === "failed" || dtlsState === "closed") {
         console.log('Transport closed "dtlsstatechange" event', {
-          connectionId,
           userId,
           transportId,
           dtlsState,
@@ -178,18 +154,10 @@ export default class Mediasoup {
     });
 
     transport.observer.on("close", () => {
-      console.log("Transport closed", { connectionId, userId, transportId });
+      console.log("Transport closed", { userId, transportId });
     });
 
-    return {
-      fullTransport: transport,
-      clientTransportOptions: {
-        id: transportId,
-        iceParameters,
-        iceCandidates,
-        dtlsParameters,
-      },
-    } as TransportResponse;
+    return transport;
   }
 
   /**
@@ -262,16 +230,19 @@ export default class Mediasoup {
 
   /**
    * Creates a consumer on the given transport.
+   * @param router The router to create the consumer on
    * @param consumerTransport The WebRtc Transport that the consumer should be created on
    * @param consumerOptions Relevant options for configuring consumer
    * @param userId The user ID associated with the connection in signaling server
+   * @param ws The WebSocket connection to the client (TODO: check if needed?)
    * @returns Created consumer
    */
   async createConsumer(
     router: MediasoupTypes.Router,
     consumerTransport: MediasoupTypes.WebRtcTransport,
     consumerOptions: MediasoupTypes.ConsumerOptions,
-    userId: string
+    userId: string,
+    ws: WebSocket<UserData>
   ) {
     if (
       !router.canConsume({
@@ -296,6 +267,21 @@ export default class Mediasoup {
         kind,
       });
       this.closeSource(consumer, userId, "consumer");
+    });
+    consumer.on("producerclose", () => {
+      console.log('Consumer closed due to "producerclose" event');
+
+      // TODO: peer.removeConsumer(id);
+
+      // Notify the client that consumer is closed
+      WebSocketActions.sendCloseEvent(
+        ws,
+        {
+          consumerId: id,
+          consumerKind: kind,
+        },
+        "consumer"
+      );
     });
     return consumer;
   }
@@ -360,3 +346,4 @@ export default class Mediasoup {
     });
   }
 }
+export { MediasoupTypes };
