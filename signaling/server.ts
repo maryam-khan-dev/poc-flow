@@ -1,9 +1,9 @@
 import config from "./config";
+import redis from "./lib/redis";
 import Mediasoup, { MediasoupTypes } from "./lib/mediasoup";
-// import config from "./config/config.js";
-// import Mediasoup from "@/signaling/mediasoup.js";
 import { SHARED_COMPRESSOR, SSLApp, WebSocket } from "uWebSockets.js";
 import {
+  FullRoomInfo,
   GetPeersCountUpdate,
   PeerData,
   UserData,
@@ -12,77 +12,108 @@ import {
 import { WebSocketActions, WS_ERRORS } from "./actions/websocket";
 import { bufferToJSON, generateHash } from "./lib/util";
 import ServerState from "./actions/server-state/server-state";
+import {
+  getLatestStreamIds,
+  listenForSweep,
+} from "./actions/server-state/cleanup/manager";
+import { publishCheckRequest } from "./actions/server-state/cleanup/producer";
+import logs from "./lib/logger";
 
 const port = !!process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const mediasoupHandler = new Mediasoup();
 const state = ServerState.getInstance();
-const {
-  getUserPresence,
-  existsRoom,
-  isUserInRoom,
-  getRoom,
-  storeRoom,
-  storeTransport,
-  storeUser,
-  removeUserFromAllRooms,
-  getTransport,
-  getProducer,
-  getConsumer,
-  getRoomPeers,
-  getRoomSize,
-  removeUserFromRoom,
-  existsProducer,
-  existsConsumer,
-} = state;
+
+async function createWorkers() {
+  try {
+    const workers = await mediasoupHandler.createWorkers(
+      config.numWorkers,
+      config.workerSettings
+    );
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+async function createRoom(roomId: string) {
+  const [worker, workerIdx] = mediasoupHandler.getNextMediasoupWorker();
+  const router = await mediasoupHandler.createRouter(
+    worker as MediasoupTypes.Worker,
+    config.routerMediaCodecs,
+    roomId
+  );
+  logs.info("Created router %s", router.id);
+  await state.storeRouter(router, config.routerMediaCodecs);
+  await state.storeRoom(roomId, router.id);
+}
 async function joinRoom(roomId: string, userId: string) {
+  console.log("BEGINNING joinRoom", userId);
   let message: string = "User is already in room";
-  if (existsRoom(roomId) && !isUserInRoom(userId, roomId)) {
+  let room = await state.getRoom(roomId);
+  const isUserInRoom = await state.isUserInRoom(userId, roomId);
+  if (isUserInRoom) {
+    message = "User is already in room";
+    logs.info("User is already in room %s", userId);
+  } else if (room) {
     message = "User has started to join room";
-  } else if (!existsRoom(roomId)) {
+    logs.info("Room exists %O", room);
+  } else {
     try {
-      const router = await mediasoupHandler.createRouter(
-        mediasoupHandler.getNextMediasoupWorker(),
-        config.routerMediaCodecs,
-        roomId
-      );
-      storeRoom(roomId, router);
-      storeUser(userId, roomId);
+      logs.info("creating room...");
+      await createRoom(roomId);
+      room = await state.getRoom(roomId);
     } catch (e) {
       console.error(e);
       return {
-        contents: {
-          info: "Error with router creation",
-        },
+        contents: { info: "Error with router creation" },
         success: false,
       };
     }
   }
+  if (!room)
+    return { contents: { info: "Error creating room" }, success: false };
+  await state.storeUser(userId, roomId);
   return {
     contents: {
       info: message,
-      routerRtpCapabilities: getRoom(roomId).router.rtpCapabilities,
+      routerRtpCapabilities: room.router?.rtpCapabilities,
       roomId,
     },
     success: true,
   };
 }
-async function createWebRtcTransports(roomId: string, userId: string) {
-  console.log(roomId);
-  const { router } = getRoom(roomId);
+async function createWebRtcTransports(room: FullRoomInfo, userId: string) {
   const { webRtcTransport } = config;
   try {
+    logs.info(
+      "Creating WebRTC transports with %s %O %s",
+      room.router?.id,
+      webRtcTransport,
+      userId
+    );
     const producerTransport = await mediasoupHandler.createWebRtcTransport(
-      router,
+      room.router,
       webRtcTransport,
       userId
     );
     const consumerTransport = await mediasoupHandler.createWebRtcTransport(
-      router,
+      room.router,
       webRtcTransport,
       userId
     );
-    storeTransport(producerTransport, userId, roomId, "producer");
-    storeTransport(consumerTransport, userId, roomId, "consumer");
+    await state.storeTransport(
+      producerTransport,
+      userId,
+      room.id,
+      "producer",
+      webRtcTransport
+    );
+    await state.storeTransport(
+      consumerTransport,
+      userId,
+      room.id,
+      "consumer",
+      webRtcTransport
+    );
     return {
       contents: {
         info: "WebRTC transports created",
@@ -102,6 +133,7 @@ async function createWebRtcTransports(roomId: string, userId: string) {
       success: true,
     };
   } catch (e) {
+    logs.error("Couldn't create transports");
     console.error(e);
     return {
       contents: {
@@ -118,7 +150,7 @@ async function connectTransport(
 ) {
   try {
     await mediasoupHandler.connectTransport(
-      getTransport(transportId),
+      state.getTransport(transportId),
       dtlsParameters,
       userId
     );
@@ -142,16 +174,22 @@ async function connectTransport(
 }
 async function produce(
   producerTransportId: string,
-  kind: MediasoupTypes.MediaKind,
-  appData: MediasoupTypes.AppData,
-  rtpParameters: MediasoupTypes.RtpParameters,
+  roomId: string,
+  producerConfig: MediasoupTypes.ProducerOptions,
   userId: string
 ) {
   try {
     const producer = await mediasoupHandler.createProducer(
-      getTransport(producerTransportId),
-      { kind, rtpParameters, appData },
+      state.getTransport(producerTransportId),
+      producerConfig,
       userId
+    );
+    await state.storeProducer(
+      producer,
+      userId,
+      roomId,
+      producerTransportId,
+      producerConfig
     );
     return {
       contents: {
@@ -175,28 +213,33 @@ async function consume(
   ws: WebSocket<UserData>,
   userId: string,
   consumerTransportId: string,
-  producerId: string,
-  rtpCapabilities: MediasoupTypes.RtpCapabilities,
-  roomId: string
+  consumerConfig: MediasoupTypes.ConsumerOptions,
+  room: FullRoomInfo
 ) {
   try {
-    const { id, kind, rtpParameters, type, producerPaused } =
-      await mediasoupHandler.createConsumer(
-        getRoom(roomId).router,
-        getTransport(consumerTransportId),
-        { producerId, rtpCapabilities },
-        userId,
-        ws
-      );
+    const consumer = await mediasoupHandler.createConsumer(
+      room.router,
+      state.getTransport(consumerTransportId),
+      consumerConfig,
+      userId,
+      ws
+    );
+    await state.storeConsumer(
+      consumer,
+      userId,
+      room.id,
+      consumerTransportId,
+      consumerConfig
+    );
     return {
       contents: {
         info: "Consumer created",
-        id,
-        kind,
-        rtpParameters,
-        type,
-        producerPaused,
-        producerId,
+        id: consumer.id,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+        type: consumer.type,
+        producerPaused: consumer.producerPaused,
+        producerId: consumer.producerId,
         consumerTransportId,
       },
       success: true,
@@ -212,9 +255,9 @@ async function consume(
   }
 }
 
-function closeProducer(producerId: string, userId: string) {
-  const producer = getProducer(producerId);
-
+async function closeProducer(producerId: string, userId: string) {
+  const producer = state.getProducer(producerId);
+  await state.removeProducer(producerId);
   try {
     mediasoupHandler.closeSource(producer, userId, "producer");
     return {
@@ -238,10 +281,11 @@ function closeProducer(producerId: string, userId: string) {
 }
 
 async function pauseProducer(producerId: string, userId: string) {
-  const pauseProducer = getProducer(producerId);
+  const pauseProducer = state.getProducer(producerId);
 
   try {
     await mediasoupHandler.pauseSource(pauseProducer, userId, "producer");
+    // TODO: see if we can update state. Not strictly necessary, because state is mostly important for restoration after server downtime.
     return {
       contents: {
         info: "Producer paused",
@@ -261,10 +305,12 @@ async function pauseProducer(producerId: string, userId: string) {
   }
 }
 async function resumeProducer(producerId: string, userId: string) {
-  const producer = getProducer(producerId);
+  const producer = state.getProducer(producerId);
 
   try {
     await mediasoupHandler.resumeSource(producer, userId, "producer");
+    // TODO: see if we can update state. Not strictly necessary, because state is mostly important for restoration after server downtime.
+
     return {
       contents: {
         info: "Producer resumed",
@@ -284,10 +330,12 @@ async function resumeProducer(producerId: string, userId: string) {
   }
 }
 async function resumeConsumer(consumerId: string, userId: string) {
-  const consumer = getConsumer(consumerId);
+  const consumer = state.getConsumer(consumerId);
 
   try {
     await mediasoupHandler.resumeSource(consumer, userId, "consumer");
+    // TODO: see if we can update state. Not strictly necessary, because state is mostly important for restoration after server downtime.
+
     return {
       contents: {
         info: "Consumer resumed",
@@ -306,15 +354,10 @@ async function resumeConsumer(consumerId: string, userId: string) {
     };
   }
 }
-function getProducersForPeer(userId: string, roomId: string) {
-  const peersInfo = Object.entries(getRoomPeers(roomId))
-    .map(([userId, peerData]) => ({
-      userId,
-      producerId: peerData.producerId,
-    }))
-    .filter(({ producerId }) => !!producerId);
+async function getProducersForPeer(userId: string, roomId: string) {
+  const peersInfo = await state.getProducingRoomPeers(roomId);
   const producers = peersInfo.map(({ userId, producerId }) => {
-    const { appData } = getProducer(producerId!);
+    const { appData } = state.getProducer(producerId!);
     return {
       userId,
       producerId,
@@ -329,49 +372,55 @@ function getProducersForPeer(userId: string, roomId: string) {
     success: true,
   };
 }
-function emptyRoomResources(
+async function emptyRoomResources(
   roomId: string,
   userId: string,
   peerData: PeerData
 ) {
-  const room = getRoom(roomId);
-  // TODO: ugly - fetches room twice
-  if (getRoomSize(roomId) <= 1 && !room.sticky) {
-    console.log("Room will be empty, closing room");
-    mediasoupHandler.closeRouter(getRoom(roomId).router);
+  const room = await state.getRoom(roomId);
+  // TODO: check if needed - do we already have a check for room non existent
+  if (!room) return;
+  if (room.peerKeys.length <= 1 && !room.sticky) {
+    logs.debug("Room will be empty, closing room");
+    mediasoupHandler.closeRouter(room.router);
   } else {
-    console.log(
+    logs.debug(
       "Room will not be empty, closing transports. This should also close producers and consumers."
     );
-    const { transportIds } = peerData;
-    Object.keys(transportIds).forEach((type) => {
-      const transportId = transportIds[type as "producer" | "consumer"];
-      if (!!transportId) {
-        mediasoupHandler.closeTransport(getTransport(transportId), userId);
+    [peerData.producerTransportId, peerData.consumerTransportId].forEach(
+      (id) => {
+        if (id) mediasoupHandler.closeTransport(state.getTransport(id), userId);
       }
-    });
+    );
   }
 }
-function disconnect(userId: string, rooms: Record<string, PeerData>) {
-  if (Object.keys(rooms).length === 0) {
-    console.log("User is in no rooms, closing connection");
+async function disconnect(userId: string) {
+  const userPresence = await state.getUserPresence(userId, true);
+  if (Object.keys(userPresence).length === 0) {
+    logs.info("User is in no rooms, closing connection");
   }
   try {
-    Object.entries(rooms).forEach(([roomId, peerData]) => {
-      emptyRoomResources(roomId, userId, peerData);
-    });
+    for (const [roomId, presenceInfo] of Object.entries(userPresence)) {
+      await emptyRoomResources(roomId, userId, presenceInfo);
+      await state.removePeerByUserRoomIds(userId, roomId);
+    }
 
     // update server state
-    removeUserFromAllRooms(userId);
+    await state.removeUser(userId);
   } catch (e) {
     console.error(e);
   }
 }
-function exitRoom(userId: string, roomId: string, peerData: PeerData) {
-  emptyRoomResources(roomId, userId, peerData);
+async function exitRoom(userId: string, roomId: string) {
+  const presenceInfo = await state.getUserPresence(userId, true, [roomId]);
+
+  // Get the room presence from the presenceInfo object
+  const [roomPresence] = Object.values(presenceInfo);
+  await emptyRoomResources(roomId, userId, roomPresence);
 
   // update server state
-  removeUserFromRoom(userId, roomId, peerData);
+  await state.removePeerByUserRoomIds(userId, roomId);
+  await publishCheckRequest(userId, "user");
 }
 
 export const app = SSLApp({
@@ -385,36 +434,46 @@ export const app = SSLApp({
     idleTimeout: 10,
     /* Handlers */
     upgrade: async (res, req, context) => {
-      let userId: string | undefined;
       const accessToken = req.getQuery("accessToken")!;
+      let userId = req.getQuery("userId");
       let upgradeAborted = false;
+      let verified = false;
       const secWebsocketKey = req.getHeader("sec-websocket-key");
       const secWebsocketProtocol = req.getHeader("sec-websocket-protocol");
       const secWebsocketExtensions = req.getHeader("sec-websocket-extensions");
+
       res.onAborted(() => (upgradeAborted = true));
       if (accessToken !== "") {
-        console.log("Access token provided");
+        logs.debug("Access token provided");
         try {
           const spotifyRes = await fetch("https://api.spotify.com/v1/me", {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
           const profile = await spotifyRes.json();
           userId = profile.id;
-
-          console.log(`Access token verified, userId: ${userId}`);
+          verified = true;
+          if (userId) {
+            logs.info(`Access token verified, userId: ${userId}`);
+          } else {
+            logs.debug(`Access token verification failed.`);
+          }
         } catch (e) {
-          console.log(`Access token verification failed: ${e}`);
+          logs.debug(`Access token verification failed: ${e}`);
         }
-      } else {
+      }
+      if (!upgradeAborted && !userId) {
         const ipAddress = res.getRemoteAddressAsText();
         userId = await generateHash(ipAddress);
-        console.log(`No accessToken provided. Generated new userId: ${userId}`);
+        logs.info(
+          `No accessToken provided, or profile fetch failed. Generated new userId: ${userId}`
+        );
       }
       if (!upgradeAborted)
         res.cork(() =>
           res.upgrade(
             {
               userId,
+              verified,
             },
             secWebsocketKey,
             secWebsocketProtocol,
@@ -425,8 +484,9 @@ export const app = SSLApp({
     },
     open: (ws: WebSocket<UserData>) => {
       const { userId } = ws.getUserData();
+      ws.ping();
       ws.getUserData = () => {
-        return { userId, rooms: getUserPresence(userId) };
+        return { userId };
       };
       WebSocketActions.send(ws, {
         type: "userIdUpdate",
@@ -438,32 +498,40 @@ export const app = SSLApp({
       /* Ok is false if backpressure was built up, wait for drain */
       const messageInfo = bufferToJSON(message as ArrayBuffer);
       const { userId } = ws.getUserData();
-      console.log("USERS MAP ---> ", state.usersMap);
-      console.log("ROOMS MAP ---> ", state.roomsMap);
 
       switch (messageInfo.type) {
         case "joinRoom":
-          console.log("REQUEST TO JOIN ROOM --->", messageInfo.roomId);
+          logs.info(
+            "REQUEST TO JOIN ROOM ---> %s %s",
+            messageInfo.roomId,
+            userId
+          );
+          ws.ping();
           WebSocketActions.send(ws, {
             type: "joinRoomUpdate",
             ...(await joinRoom(messageInfo.roomId, userId)),
           });
           break;
         case "createWebRtcTransports":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
-              "createWebRtcTransports",
+              "createWebRtcTransportsUpdate",
               WS_ERRORS.ROOM_NON_EXISTENT
             );
+            return;
           }
+
           WebSocketActions.send(ws, {
             type: "createWebRtcTransportsUpdate",
-            ...(await createWebRtcTransports(messageInfo.roomId, userId)),
+            ...(await createWebRtcTransports(
+              (await state.getRoom(messageInfo.roomId))!,
+              userId
+            )),
           });
           break;
         case "connectTransport":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "connectTransportUpdate",
@@ -482,7 +550,7 @@ export const app = SSLApp({
           });
           break;
         case "produce":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "produceUpdate",
@@ -495,15 +563,18 @@ export const app = SSLApp({
             type: "produceUpdate",
             ...(await produce(
               messageInfo.producerTransportId,
-              messageInfo.kind,
-              messageInfo.appData,
-              messageInfo.rtpParameters,
+              messageInfo.roomId,
+              {
+                kind: messageInfo.kind,
+                appData: messageInfo.appData,
+                rtpParameters: messageInfo.rtpParameters,
+              },
               userId
             )),
           });
           break;
         case "consume":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "consumeUpdate",
@@ -517,14 +588,16 @@ export const app = SSLApp({
               ws,
               userId,
               messageInfo.consumerTransportId,
-              messageInfo.producerId,
-              messageInfo.rtpCapabilities,
-              messageInfo.roomId
+              {
+                producerId: messageInfo.producerId,
+                rtpCapabilities: messageInfo.rtpCapabilities,
+              },
+              (await state.getRoom(messageInfo.roomId))!
             )),
           });
           break;
         case "producerClosed":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "producerClosedUpdate",
@@ -532,7 +605,7 @@ export const app = SSLApp({
             );
             return;
           }
-          if (!existsProducer(messageInfo.producerId)) {
+          if (!state.existsProducer(messageInfo.producerId)) {
             WebSocketActions.sendError(
               ws,
               "producerClosedUpdate",
@@ -542,12 +615,12 @@ export const app = SSLApp({
           }
           WebSocketActions.send(ws, {
             type: "producerClosedUpdate",
-            ...closeProducer(messageInfo.producerId, userId),
+            ...(await closeProducer(messageInfo.producerId, userId)),
           });
 
           break;
         case "pauseProducer":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "pauseProducerUpdate",
@@ -556,7 +629,7 @@ export const app = SSLApp({
             return;
           }
 
-          if (!existsProducer(messageInfo.producerId)) {
+          if (!state.existsProducer(messageInfo.producerId)) {
             WebSocketActions.sendError(
               ws,
               "pauseProducerUpdate",
@@ -571,7 +644,7 @@ export const app = SSLApp({
           });
           break;
         case "resumeProducer":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "resumeProducerUpdate",
@@ -579,7 +652,7 @@ export const app = SSLApp({
             );
             return;
           }
-          if (!existsProducer(messageInfo.producerId)) {
+          if (!state.existsProducer(messageInfo.producerId)) {
             WebSocketActions.sendError(
               ws,
               "resumeProducerUpdate",
@@ -594,7 +667,7 @@ export const app = SSLApp({
           });
           break;
         case "resumeConsumer":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "resumeConsumerUpdate",
@@ -602,7 +675,7 @@ export const app = SSLApp({
             );
             return;
           }
-          if (!existsConsumer(messageInfo.consumerId)) {
+          if (!state.existsConsumer(messageInfo.consumerId)) {
             WebSocketActions.sendError(
               ws,
               "resumeConsumerUpdate",
@@ -616,7 +689,7 @@ export const app = SSLApp({
           });
           break;
         case "getProducersForPeer":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "getProducersUpdate",
@@ -627,11 +700,11 @@ export const app = SSLApp({
 
           WebSocketActions.send(ws, {
             type: "getProducersUpdate",
-            ...getProducersForPeer(userId, messageInfo.roomId),
+            ...(await getProducersForPeer(userId, messageInfo.roomId)),
           });
           break;
         case "getPeersCount":
-          if (!existsRoom(messageInfo.roomId)) {
+          if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
               "getPeersCountUpdate",
@@ -643,78 +716,61 @@ export const app = SSLApp({
             type: "getPeersCountUpdate",
             contents: {
               info: "Peers count retrieved",
-              peersCount: getRoomSize(messageInfo.roomId),
+              peersCount: await state.getRoomSize(messageInfo.roomId),
             },
             success: true,
           } as GetPeersCountUpdate);
           break;
         case "disconnect":
-          WebSocketActions.end(ws, 200, "Disconnecting now. Goodbye!");
+          WebSocketActions.end(ws, 1010, "Disconnecting now. Goodbye!");
           break;
         // TODO: exitRoom even needed if each tab has its own websocket?
         // YES because disconnect removes user from all rooms by user ID
         // User ID, if unauthenticated, is stored in browser storage. Otherwise, it's the Spotify ID
         case "exitRoom":
-          const { roomId } = messageInfo;
-          if (!existsRoom(roomId)) {
-            WebSocketActions.sendError(
-              ws,
-              "exitRoomUpdate",
-              WS_ERRORS.ROOM_NON_EXISTENT
-            );
-            return;
-          }
-          const { [roomId]: peerDataForRoom, ...otherRooms } =
-            ws.getUserData().rooms;
-          try {
-            exitRoom(userId, roomId, peerDataForRoom);
-            ws.getUserData = () => {
-              return { userId, rooms: otherRooms };
-            };
-            WebSocketActions.end(
-              ws,
-              200,
-              "User disconnected. Closing connection after emptying resources."
-            );
-          } catch (e) {
-            console.error(e);
-          }
+          logs.warn("exitRoom not implemented yet");
           break;
         default:
+          console.log("Unknown message type");
           break;
       }
     },
     drain: (ws) => {
-      console.log("WebSocket backpressure: " + ws.getBufferedAmount());
+      logs.info("WebSocket backpressure: " + ws.getBufferedAmount());
     },
-    close: (ws, code, message) => {
-      console.log(
-        `WebSocket close requested with code ${code} and message ${message}.`
+    close: async (ws, code, message) => {
+      logs.info(
+        `WebSocket close requested with code ${code} and message ${btoa(
+          String.fromCharCode(...new Uint8Array(message))
+        )}.`
       );
-      const { userId, rooms } = ws.getUserData();
-      console.log("ROOMS ON CLOSE", rooms);
-      disconnect(userId, rooms);
-      console.log("User disconnected after emptying resources. Goodbye!");
+      const { userId } = ws.getUserData();
+      await disconnect(userId);
+      await publishCheckRequest(userId, "user");
+      console.log("just before disconnect", state.userPeerKeys);
+      logs.info("User disconnected after emptying resources. Goodbye!");
+    },
+    dropped: (ws) => {
+      console.log("dropped");
+      ws.ping();
     },
   })
   .get("/*", (res, _req) => {
-    console.log("HTTP REQUEST RECEIVED");
+    logs.info("HTTP REQUEST RECEIVED");
     res.end("Hello World!");
   })
   .listen(port, async (token) => {
     if (token) {
-      console.log("Listening to port " + port);
-      console.log();
+      logs.info("Listening to port " + port);
       try {
-        await mediasoupHandler.createWorkers(
-          config.numWorkers,
-          config.workerSettings
-        );
-        console.log("Workers created");
+        await redis.connect();
+        await createWorkers();
+        const latestStreamIds = await getLatestStreamIds();
+        await listenForSweep(latestStreamIds);
       } catch (e) {
-        console.error("Create Worker ERROR --->", e);
+        console.error("redis--->", e);
       }
     } else {
-      console.log("Failed to listen to port " + port);
+      logs.info("Failed to listen to port " + port);
     }
   });

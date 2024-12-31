@@ -1,21 +1,3 @@
-<<<<<<< HEAD
-import { PeerData, RoomData } from "../../ServerTypes";
-import type { types as MediasoupTypes } from "mediasoup";
-import autoBind from "auto-bind";
-class ServerStateActions {
-  /** Maps user ID to a user room record (map of room IDs and peer data) */
-  usersMap: Record<string, Record<string, PeerData>> = {};
-  roomsMap: Record<string, RoomData> = {};
-  transportsMap: Record<string, MediasoupTypes.WebRtcTransport> = {};
-  producersMap: Record<string, MediasoupTypes.Producer> = {};
-  consumersMap: Record<string, MediasoupTypes.Consumer> = {};
-  constructor() {
-    this.usersMap = {};
-    this.roomsMap = {};
-    this.transportsMap = {};
-    this.producersMap = {};
-    this.consumersMap = {};
-=======
 import { FullRoomInfo, PeerKeyData } from "../../ServerTypes";
 import type { types as MediasoupTypes } from "mediasoup";
 import autoBind from "auto-bind";
@@ -45,19 +27,10 @@ class ServerStateActions {
     this.transports = {};
     this.producers = {};
     this.consumers = {};
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
     autoBind(this);
   }
 
   /**
-<<<<<<< HEAD
-   * Check if room exists
-   * @param roomId The room ID
-   * @returns If the room exists
-   */
-  existsRoom(roomId: string) {
-    return !!this.roomsMap[roomId];
-=======
    * Get info on a room
    * @param roomId The room ID of the room
    * @returns the room information
@@ -171,7 +144,6 @@ class ServerStateActions {
     const { [routerId]: router, ...others } = this.routers;
     this.routers = { ...others };
     logs.info("REMOVED ROUTER FROM STATE ---> %s", routerId);
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
@@ -180,42 +152,6 @@ class ServerStateActions {
    * @param roomId The room ID
    * @returns If the user is in the room
    */
-<<<<<<< HEAD
-  isUserInRoom(userId: string, roomId: string) {
-    return (
-      this.existsRoom(roomId) &&
-      !!this.usersMap[userId] &&
-      !!this.usersMap[userId][roomId]
-    );
-  }
-
-  /**
-   * Removes a room from server state
-   * @param roomId The room ID
-   */
-  removeRoom(roomId: string) {
-    const { [roomId]: _roomToRemove, ...others } = this.roomsMap;
-    this.roomsMap = { ...others };
-  }
-
-  /**
-   * Get info on room(s) the user is in
-   * @param userId The user ID of the user
-   * @returns the user's rooms
-   */
-  getUserPresence(userId: string) {
-    return this.usersMap[userId] ?? {};
-  }
-
-  /**
-   * Removes a user from server state
-   * @param userId The user ID
-   */
-  removeUser(userId: string) {
-    const { [userId]: _userToRemove, ...others } = this.usersMap;
-    this.usersMap = { ...others };
-  }
-=======
   async isUserInRoom(userId: string, roomId: string) {
     return !!this.userPeerKeys[userId]?.[roomId];
   }
@@ -270,49 +206,11 @@ class ServerStateActions {
     };
   }
 
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   /**
    * Store the user in server storage
    * @param userId The user ID of the user
    * @param roomId The room ID of the room they want to join
    */
-<<<<<<< HEAD
-  storeUser(userId: string, roomId: string) {
-    const peerData = {
-      transportIds: {
-        producer: null,
-        consumer: null,
-      },
-      producerId: null,
-      consumerId: null,
-    };
-    this.usersMap[userId] = {
-      ...this.usersMap[userId],
-      ...{ [roomId]: peerData },
-    };
-    this.roomsMap[roomId].peers[userId] = peerData;
-  }
-
-  /**
-   * Removes user's peer data from server state
-   * @param userId - The user ID whose peer data to delete
-   * @param userPeerData - The peer data of the user (such as transport IDs, producer ID, and consumer ID)
-   */
-  removeUserPeerData(userId: string, userPeerData: PeerData) {
-    const { transportIds, producerId, consumerId } = userPeerData;
-    Object.keys(transportIds).forEach((type) => {
-      const transportId = transportIds[type as "producer" | "consumer"];
-      if (!!transportId) {
-        this.removeTransport(transportId);
-      }
-    });
-    if (!!producerId) {
-      this.removeProducer(producerId);
-    }
-    if (!!consumerId) {
-      this.removeConsumer(consumerId);
-    }
-=======
   async storeUser(userId: string, roomId: string) {
     // 1. Save peer (user-room connection) information in Redis hash.
     console.log("ABOUT TO SAVE USER", userId);
@@ -357,33 +255,12 @@ class ServerStateActions {
     if (producerId) await producerRepository.remove(producerId);
     if (consumerId) await consumerRepository.remove(consumerId);
     await peerRepository.remove(peerKey);
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
    * Removes a user from a room in server state
    * @param userId - The user ID of the user
    * @param roomId - The room ID of the room
-<<<<<<< HEAD
-   * @param userPeerData - The peer data of the user (such as transport IDs, producer ID, and consumer ID)
-   */
-  removeUserFromRoom(userId: string, roomId: string, userPeerData: PeerData) {
-    const { [roomId]: roomRecord } = this.roomsMap;
-    this.removeUserPeerData(userId, userPeerData);
-    if (roomRecord) {
-      const { [userId]: _user, ...otherPeers } = roomRecord.peers;
-      if (!roomRecord.sticky) {
-        if (Object.keys(otherPeers).length === 0) {
-          this.removeRoom(roomId);
-        }
-      }
-      // if there still is a room after removing empty non-sticky rooms, update peers
-      if (this.roomsMap[roomId]) this.roomsMap[roomId].peers = otherPeers;
-    }
-    const userPresence = this.getUserPresence(userId);
-    if (Object.keys(userPresence).length === 0) {
-      this.removeUser(userId);
-=======
    */
   async removePeer(peerKey: string) {
     const { userId, roomId } = await peerRepository.fetch(peerKey);
@@ -410,67 +287,10 @@ class ServerStateActions {
     // If this user was a peer in the given room
     if (peerKey) {
       await this.removePeer(peerKey);
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
     }
   }
 
   /**
-<<<<<<< HEAD
-   * Removes a user from all rooms in server state
-   * @param userId The user ID of the user
-   */
-  removeUserFromAllRooms(userId: string) {
-    const userRoomRecord = this.getUserPresence(userId);
-    for (const [roomId, userPeerData] of Object.entries(userRoomRecord)) {
-      this.removeUserFromRoom(userId, roomId, userPeerData);
-    }
-  }
-
-  /**
-   * Get info on a room
-   * @param roomId The room ID of the room
-   * @returns the room information
-   */
-  getRoom(roomId: string) {
-    return this.roomsMap[roomId];
-  }
-
-  /**
-   * Gets room size
-   * @param roomId The room ID of the room
-   * @returns The number of people in this room
-   */
-  getRoomSize(roomId: string) {
-    console.log(this.roomsMap[roomId]);
-    return !!this.roomsMap[roomId]?.peers
-      ? Object.keys(this.roomsMap[roomId].peers).length
-      : 0;
-  }
-
-  /**
-   * Gets room peers
-   * @param roomId The room ID
-   * @returns The list of room peers
-   */
-  getRoomPeers(roomId: string) {
-    return this.roomsMap[roomId].peers;
-  }
-
-  /**
-   * Stores the room in server state
-   * @param roomId - The ID of the room
-   * @param router - The router for this room
-   */
-  storeRoom(roomId: string, router: MediasoupTypes.Router) {
-    if (!!this.roomsMap[roomId]) return;
-    this.roomsMap[roomId] = {
-      router,
-      peers: {},
-      sticky: false,
-    };
-  }
-  /**
-=======
    * Removes a user from server state
    * @param userId The user ID
    */
@@ -494,31 +314,12 @@ class ServerStateActions {
   }
 
   /**
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
    * Stores the transport in server state
    * @param transport - The transport
    * @param userId - The user ID
    * @param roomId - The room ID
    * @param type - The type of transport ("producer" or "consumer")
    */
-<<<<<<< HEAD
-  storeTransport(
-    transport: MediasoupTypes.WebRtcTransport,
-    userId: string,
-    roomId: string,
-    type: "producer" | "consumer"
-  ) {
-    if (!!this.transportsMap[transport.id]) return;
-    this.usersMap[userId][roomId] = {
-      ...this.usersMap[userId][roomId],
-      transportIds: {
-        [type]: transport.id,
-      } as Record<"producer" | "consumer", string>,
-    };
-    this.usersMap[userId][roomId]["transportIds"][type] = transport.id;
-    this.roomsMap[roomId].peers[userId]["transportIds"][type] = transport.id;
-    this.transportsMap[transport.id] = transport;
-=======
   async storeTransport(
     transport: MediasoupTypes.WebRtcTransport,
     userId: string,
@@ -538,7 +339,6 @@ class ServerStateActions {
       type === "producer" ? "producerTransportId" : "consumerTransportId";
     await redis.hSet(`peer:${peerKey}`, field, transport.id);
     this.transports[transport.id] = transport;
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
@@ -547,22 +347,13 @@ class ServerStateActions {
    * @returns The transport
    */
   getTransport(transportId: string) {
-<<<<<<< HEAD
-    return this.transportsMap[transportId];
-=======
     return this.transports[transportId];
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
    * Remove transport ID from server state
    * @param transportId The transport ID
    */
-<<<<<<< HEAD
-  removeTransport(transportId: string) {
-    const { [transportId]: _transportToRemove, ...others } = this.transportsMap;
-    this.transportsMap = { ...others };
-=======
   async removeTransport(transportId: string) {
     if (!this.transports[transportId]) return;
 
@@ -573,7 +364,6 @@ class ServerStateActions {
 
     // 2. Remove transport from local memory.
     this.transports = { ...others };
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
@@ -582,49 +372,7 @@ class ServerStateActions {
    * @returns If the producer exists
    */
   existsProducer(producerId: string) {
-<<<<<<< HEAD
-    return !!this.producersMap[producerId];
-  }
-  /**
-   * Stores the producer in server state
-   * @param producer - The producer
-   * @param userId - The user ID
-   * @param roomId - The room ID
-   */
-  storeProducer(
-    producer: MediasoupTypes.Producer,
-    userId: string,
-    roomId: string
-  ) {
-    if (!!this.producersMap[producer.id]) return;
-    this.usersMap[userId][roomId]["producerId"] = producer.id;
-    this.roomsMap[roomId].peers[userId]["producerId"] = producer.id;
-    this.producersMap[producer.id] = producer;
-  }
-
-  /**
-   * Removes the producer from server state
-   * @param producerId The producer ID
-   * @param updateReferences Whether to update references to this producer
-   * @param userId The user ID, if known
-   * @param roomId The room ID, if known
-   *
-   */
-  removeProducer(producerId: string) {
-    const { [producerId]: _producerToRemove, ...others } = this.producersMap;
-    this.producersMap = { ...others };
-  }
-
-  /**
-   * Check if consumer exists
-   * @param consumerId The consumer ID
-   * @returns If the consumer exists
-   */
-  existsConsumer(consumerId: string) {
-    return !!this.consumersMap[consumerId];
-=======
     return !!this.producers[producerId];
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
@@ -633,9 +381,6 @@ class ServerStateActions {
    * @returns The producer
    */
   getProducer(producerId: string) {
-<<<<<<< HEAD
-    return this.producersMap[producerId];
-=======
     return this.producers[producerId];
   }
 
@@ -695,7 +440,6 @@ class ServerStateActions {
    */
   existsConsumer(consumerId: string) {
     return !!this.consumers[consumerId];
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
@@ -703,18 +447,6 @@ class ServerStateActions {
    * @param consumer - The consumer
    * @param userId - The user ID
    * @param roomId - The room ID
-<<<<<<< HEAD
-   */
-  storeConsumer(
-    consumer: MediasoupTypes.Consumer,
-    userId: string,
-    roomId: string
-  ) {
-    if (!!this.consumersMap[consumer.id]) return;
-    this.usersMap[userId][roomId]["consumerId"] = consumer.id;
-    this.roomsMap[roomId].peers[userId]["consumerId"] = consumer.id;
-    this.consumersMap[consumer.id] = consumer;
-=======
    * @param transportId - The transport ID
    * @param config - The configuration for the consumer
    */
@@ -732,20 +464,10 @@ class ServerStateActions {
       config: JSON.stringify(config),
     });
     this.consumers[consumer.id] = consumer;
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 
   /**
    * Returns the consumer from server state
-<<<<<<< HEAD
-   * @param consumerId The transport ID
-   * @returns The transport
-   */
-  getConsumer(consumerId: string) {
-    return this.consumersMap[consumerId];
-  }
-
-=======
    * @param consumerId The consumer ID
    * @returns The consumer
    */
@@ -763,16 +485,10 @@ class ServerStateActions {
   //   this.consumers[consumerId].consumer = consumer;
   // }
 
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   /**
    * Removes the consumer from server state
    * @param consumerId The consumer ID
    */
-<<<<<<< HEAD
-  removeConsumer(consumerId: string) {
-    const { [consumerId]: _consumerToRemove, ...others } = this.consumersMap;
-    this.consumersMap = { ...others };
-=======
   async removeConsumer(consumerId: string) {
     if (!this.consumers[consumerId]) return;
     const { [consumerId]: consumerToRemove, ...others } = this.consumers;
@@ -781,11 +497,11 @@ class ServerStateActions {
 
     // 2. Remove consumer from local memory.
     this.consumers = { ...others };
->>>>>>> f6dd8cd (Update ServerStateActions to use Redis instead of local memory)
   }
 }
 export default class ServerState {
-  private static serverState: ServerStateActions;constructor() {
+  private static serverState: ServerStateActions;
+  constructor() {
     autoBind(this);
   }
   static getInstance() {
