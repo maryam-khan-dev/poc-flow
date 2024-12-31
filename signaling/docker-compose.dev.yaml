@@ -1,0 +1,31 @@
+services:
+  cache:
+    extends:
+      file: docker-compose.base.yaml
+      service: cache
+  app:
+    extends:
+      file: docker-compose.base.yaml
+      service: app
+    ports:
+      - 3001:3001
+    environment:
+      NODE_EXTRA_CA_CERTS: "/app/config/cert.pem"
+      PORT: 3001
+      ANNOUNCED_ADDRESS: 127.0.0.1
+      # ANNOUNCED_ADDRESS: Elastic IP OR Public Static IP of server hosting this app
+    volumes:
+      - type: bind
+        source: ./server.ts
+        target: /app/server.ts
+        read_only: true
+      - type: bind
+        source: ./lib
+        target: /app/lib
+        read_only: true
+      - type: bind
+        source: ./actions/server-state
+        target: /app/actions/server-state
+        read_only: true
+    depends_on:
+      - cache

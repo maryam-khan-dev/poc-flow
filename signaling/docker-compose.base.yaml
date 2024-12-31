@@ -1,0 +1,10 @@
+services:
+  cache:
+    image: redis/redis-stack:latest
+    restart: always
+    ports:
+      - 6379:6379
+  app:
+    build: .
+    depends_on:
+      - cache
