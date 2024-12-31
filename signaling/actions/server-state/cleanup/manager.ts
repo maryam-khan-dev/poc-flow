@@ -54,7 +54,11 @@ export async function listenForSweep(latestStreamIds: LatestStreamIds) {
 
         if (type && resource && streamName === CHECK) {
           const checker = CHECKERS[type];
-          logs.info("listener received message: %O", { id, type, resource });
+          logs.debug("Cleanup listener received message: %O", {
+            id,
+            type,
+            resource,
+          });
           if (await checker.shouldSweep(resource)) {
             await SWEEPERS[type].sweep(resource);
           }

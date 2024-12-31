@@ -37,14 +37,18 @@ export default class Mediasoup {
 
       this.workers.push(worker);
 
-      /*
-                  setInterval(async () => {
-                      const usage = await worker.getResourceUsage();
-                      logs.info('mediasoup Worker resource usage', { worker_pid: worker.pid, usage: usage });
-                      const dump = await worker.dump();
-                      logs.info('mediasoup Worker dump', { worker_pid: worker.pid, dump: dump });
-                  }, 120000);
-                  */
+      setInterval(async () => {
+        const usage = await worker.getResourceUsage();
+        logs.debug("mediasoup Worker resource usage", {
+          worker_pid: worker.pid,
+          usage: usage,
+        });
+        const dump = await worker.dump();
+        logs.debug("mediasoup Worker dump", {
+          worker_pid: worker.pid,
+          dump: dump,
+        });
+      }, 120000);
     }
     return this.workers;
   }
@@ -126,7 +130,7 @@ export default class Mediasoup {
       throw new WebRtcTransportCreationError(userId, webRtcTransportOptions);
     }
     const { id: transportId, type } = transport;
-    logs.info("Transport created", { transportId, transportType: type });
+    logs.debug("Transport created", { transportId, transportType: type });
 
     transport.on("icestatechange", (iceState: MediasoupTypes.IceState) => {
       if (iceState === "disconnected" || iceState === "closed") {

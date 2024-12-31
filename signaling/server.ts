@@ -41,24 +41,24 @@ async function createRoom(roomId: string) {
     config.routerMediaCodecs,
     roomId
   );
-  logs.info("Created router %s", router.id);
   await state.storeRouter(router, config.routerMediaCodecs);
   await state.storeRoom(roomId, router.id);
+  logs.info("Stored router %s", router.id);
 }
 async function joinRoom(roomId: string, userId: string) {
-  console.log("BEGINNING joinRoom", userId);
   let message: string = "User is already in room";
   let room = await state.getRoom(roomId);
+  logs.debug("Room: %O", room);
   const isUserInRoom = await state.isUserInRoom(userId, roomId);
   if (isUserInRoom) {
     message = "User is already in room";
-    logs.info("User is already in room %s", userId);
+    logs.info("User is already in room %s", userId, roomId);
   } else if (room) {
     message = "User has started to join room";
-    logs.info("Room exists %O", room);
+    logs.info("User will now join room %s", roomId);
   } else {
     try {
-      logs.info("creating room...");
+      logs.info("Creating room: %s", roomId);
       await createRoom(roomId);
       room = await state.getRoom(roomId);
     } catch (e) {
@@ -465,7 +465,8 @@ export const app = SSLApp({
         const ipAddress = res.getRemoteAddressAsText();
         userId = await generateHash(ipAddress);
         logs.info(
-          `No accessToken provided, or profile fetch failed. Generated new userId: ${userId}`
+          `No accessToken provided, or profile fetch failed. Generated new userId: %s`,
+          userId
         );
       }
       if (!upgradeAborted)
@@ -502,7 +503,7 @@ export const app = SSLApp({
       switch (messageInfo.type) {
         case "joinRoom":
           logs.info(
-            "REQUEST TO JOIN ROOM ---> %s %s",
+            "Received request to join room. User ID: %s, room ID: %s",
             messageInfo.roomId,
             userId
           );
@@ -747,8 +748,10 @@ export const app = SSLApp({
       const { userId } = ws.getUserData();
       await disconnect(userId);
       await publishCheckRequest(userId, "user");
-      console.log("just before disconnect", state.userPeerKeys);
-      logs.info("User disconnected after emptying resources. Goodbye!");
+      logs.info(
+        "User %s disconnected after emptying resources. Goodbye!",
+        userId
+      );
     },
     dropped: (ws) => {
       console.log("dropped");

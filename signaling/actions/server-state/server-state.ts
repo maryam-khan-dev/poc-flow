@@ -106,7 +106,6 @@ class ServerStateActions {
 
     // 2. Save the Mediasoup router itself in local memory, since its event handlers etc can't be cached.
     this.routers[router.id] = router;
-    console.log("STORED ROUTER", router.id);
   }
 
   /**
@@ -143,7 +142,7 @@ class ServerStateActions {
     // 2. Remove Mediasoup router itself from local memory.
     const { [routerId]: router, ...others } = this.routers;
     this.routers = { ...others };
-    logs.info("REMOVED ROUTER FROM STATE ---> %s", routerId);
+    logs.info("Removed router %s from state", routerId);
   }
 
   /**
@@ -213,7 +212,7 @@ class ServerStateActions {
    */
   async storeUser(userId: string, roomId: string) {
     // 1. Save peer (user-room connection) information in Redis hash.
-    console.log("ABOUT TO SAVE USER", userId);
+    logs.debug("Saving user %s in room %s", userId, roomId);
     const savedPeer: Entity = await peerRepository.save(`${userId}:${roomId}`, {
       userId,
       roomId,
@@ -279,7 +278,11 @@ class ServerStateActions {
 
     const { [roomId]: room, ...others } = this.userPeerKeys[userId];
     this.userPeerKeys[userId] = { ...others };
-    logs.info("userPeerKeys now %O", this.userPeerKeys);
+    logs.info(
+      "Removed peer %s. In-memory userPeerKeys now %O",
+      peerKey,
+      this.userPeerKeys
+    );
   }
 
   async removePeerByUserRoomIds(userId: string, roomId: string) {
