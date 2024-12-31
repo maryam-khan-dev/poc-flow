@@ -35,7 +35,7 @@ async function createWorkers() {
   }
 }
 async function createRoom(roomId: string) {
-  const [worker, workerIdx] = mediasoupHandler.getNextMediasoupWorker();
+  const worker = mediasoupHandler.getNextMediasoupWorker();
   const router = await mediasoupHandler.createRouter(
     worker as MediasoupTypes.Worker,
     config.routerMediaCodecs,
