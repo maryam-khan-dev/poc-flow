@@ -1,31 +1,31 @@
 import type { types as MediasoupTypes } from "mediasoup";
 
 interface PeerData {
-  transportIds: {
-    producer: string | null;
-    consumer: string | null;
-  };
+  producerTransportId: string | null;
+  consumerTransportId: string | null;
   producerId: string | null;
   consumerId: string | null;
 }
-interface RoomData {
+interface PeerKeyData extends Record<string, string> {
+  [roomId: string]: string;
+}
+
+interface FullRoomInfo {
+  peerKeys: string[];
   router: MediasoupTypes.Router;
-  peers: {
-    [userId: string]: PeerData;
-  };
-  /* Whether the room should stay up despite having no users */
+  id: string;
   sticky: boolean;
 }
 interface UserData {
   accessToken?: string;
   userId: string;
-  rooms: Record<
-    string,
-    PeerData
-    // & {
-    //   routerId: string;
-    // }
-  >;
+  // rooms: Record<
+  //   string,
+  //   PeerData
+  //   // & {
+  //   //   routerId: string;
+  //   // }
+  // >;
 }
 /**
  * @abstract
