@@ -4,10 +4,14 @@ import { WebRtcTransportCreationError, CannotConsumeError } from "./error";
 import { WebSocketActions } from "../actions/websocket";
 import { WebSocket } from "uWebSockets.js";
 import { UserData } from "../ServerTypes";
+import autoBind from "auto-bind";
+import logs from "./logger";
 export default class Mediasoup {
   nextMediasoupWorkerIdx: number = 0;
   workers: Array<MediasoupTypes.Worker> = [];
-  constructor() {}
+  constructor() {
+    autoBind(this);
+  }
   /**
    * Creates workers with provided settings.
    * @param numWorkers Number of workers to create
@@ -18,13 +22,14 @@ export default class Mediasoup {
     numWorkers: number,
     workerSettings: MediasoupTypes.WorkerSettings
   ) {
+    logs.debug(numWorkers);
     for (let i = 0; i < numWorkers; i++) {
       //
       const worker = await mediasoup.createWorker(workerSettings);
 
       worker.on("died", () => {
         // should NEVER happen
-        console.error(
+        logs.error(
           `Mediasoup worker died, exiting in 2 seconds... ${worker.pid}`
         );
         setTimeout(() => process.exit(1), 2000);
@@ -35,18 +40,18 @@ export default class Mediasoup {
       /*
                   setInterval(async () => {
                       const usage = await worker.getResourceUsage();
-                      console.info('mediasoup Worker resource usage', { worker_pid: worker.pid, usage: usage });
+                      logs.info('mediasoup Worker resource usage', { worker_pid: worker.pid, usage: usage });
                       const dump = await worker.dump();
-                      console.info('mediasoup Worker dump', { worker_pid: worker.pid, dump: dump });
+                      logs.info('mediasoup Worker dump', { worker_pid: worker.pid, dump: dump });
                   }, 120000);
                   */
-      return this.workers;
     }
+    return this.workers;
   }
   /**
    * Gets the next Mediasoup worker, distributing the load in round-robin fashion.
    * @param nextMediasoupWorkerIdx - Next Mediasoup worker index
-   * @returns next worker
+   * @returns next worker and the worker index
    */
   getNextMediasoupWorker() {
     const worker = this.workers[this.nextMediasoupWorkerIdx];
@@ -69,7 +74,7 @@ export default class Mediasoup {
   ) {
     const router = await worker.createRouter({ mediaCodecs });
     router.observer.on("close", () => {
-      console.log(
+      logs.info(
         "---------------> Router is now closed as the last peer has left the room.",
         {
           roomId,
@@ -94,7 +99,7 @@ export default class Mediasoup {
    */
   closeRouter(router: MediasoupTypes.Router) {
     router.close();
-    console.log("Closed router", {
+    logs.debug("Closed router", {
       routerId: router.id,
       routerClosed: router.closed,
     });
@@ -112,7 +117,7 @@ export default class Mediasoup {
     webRtcTransportOptions: MediasoupTypes.WebRtcTransportOptions,
     userId: string
   ) {
-    console.log("webRtcTransportOptions ----->", webRtcTransportOptions);
+    logs.debug("webRtcTransportOptions ----->", webRtcTransportOptions);
     // TODO: set userId as value of sub in access token on first post-connect message
     const transport = await router.createWebRtcTransport(
       webRtcTransportOptions
@@ -121,11 +126,11 @@ export default class Mediasoup {
       throw new WebRtcTransportCreationError(userId, webRtcTransportOptions);
     }
     const { id: transportId, type } = transport;
-    console.log("Transport created", { transportId, transportType: type });
+    logs.info("Transport created", { transportId, transportType: type });
 
     transport.on("icestatechange", (iceState: MediasoupTypes.IceState) => {
       if (iceState === "disconnected" || iceState === "closed") {
-        console.log('Transport closed "icestatechange" event', {
+        logs.debug('Transport closed "icestatechange" event', {
           userId,
           transportId,
           iceState,
@@ -135,7 +140,7 @@ export default class Mediasoup {
     });
 
     transport.on("sctpstatechange", (sctpState: MediasoupTypes.SctpState) => {
-      console.log('Transport "sctpstatechange" event', {
+      logs.debug('Transport "sctpstatechange" event', {
         userId,
         transportId,
         sctpState,
@@ -144,7 +149,7 @@ export default class Mediasoup {
 
     transport.on("dtlsstatechange", (dtlsState: MediasoupTypes.DtlsState) => {
       if (dtlsState === "failed" || dtlsState === "closed") {
-        console.log('Transport closed "dtlsstatechange" event', {
+        logs.debug('Transport closed "dtlsstatechange" event', {
           userId,
           transportId,
           dtlsState,
@@ -154,7 +159,7 @@ export default class Mediasoup {
     });
 
     transport.observer.on("close", () => {
-      console.log("Transport closed", { userId, transportId });
+      logs.debug("Transport closed", { userId, transportId });
     });
 
     return transport;
@@ -172,7 +177,7 @@ export default class Mediasoup {
     userId: string
   ) {
     await transport.connect({ dtlsParameters });
-    console.log("Connect transport", { userId, transportId: transport.id });
+    logs.debug("Connect transport", { userId, transportId: transport.id });
   }
 
   /**
@@ -193,7 +198,7 @@ export default class Mediasoup {
   closeTransport(transport: MediasoupTypes.WebRtcTransport, userId: string) {
     transport.close();
 
-    console.log(`Transport closed`, {
+    logs.debug(`Transport closed`, {
       transportId: transport.id,
       userId,
       closed: transport.closed,
@@ -215,9 +220,9 @@ export default class Mediasoup {
   ) {
     const producer = await producerTransport.produce(producerOptions);
     const { id, type, kind } = producer;
-    console.log("Producer ----->", { type, kind });
+    logs.debug("Producer ----->", { type, kind });
     producer.on("transportclose", () => {
-      console.log('Producer "transportclose" event', {
+      logs.debug('Producer "transportclose" event', {
         id,
         userId,
         type,
@@ -258,9 +263,9 @@ export default class Mediasoup {
     }
     const consumer = await consumerTransport.consume(consumerOptions);
     const { id, type, kind } = consumer;
-    console.log("Consumer ----->", { type, kind });
+    logs.debug("Consumer ----->", { type, kind });
     consumer.on("transportclose", () => {
-      console.log('Consumer "transportclose" event', {
+      logs.debug('Consumer "transportclose" event', {
         id,
         userId,
         type,
@@ -269,7 +274,7 @@ export default class Mediasoup {
       this.closeSource(consumer, userId, "consumer");
     });
     consumer.on("producerclose", () => {
-      console.log('Consumer closed due to "producerclose" event');
+      logs.debug('Consumer closed due to "producerclose" event');
 
       // TODO: peer.removeConsumer(id);
 
@@ -298,7 +303,7 @@ export default class Mediasoup {
     type: "consumer" | "producer"
   ) {
     await source.pause();
-    console.log(`${type} paused`, {
+    logs.debug(`${type} paused`, {
       userId,
       [`${type}Id`]: source.id,
       paused: source.paused,
@@ -317,7 +322,7 @@ export default class Mediasoup {
     type: "consumer" | "producer"
   ) {
     await source.resume();
-    console.log(`${type} resumed`, {
+    logs.debug(`${type} resumed`, {
       userId,
       [`${type}Id`]: source.id,
       paused: source.paused,
@@ -337,7 +342,7 @@ export default class Mediasoup {
   ) {
     source.close();
 
-    console.log(`${type} closed`, {
+    logs.debug(`${type} closed`, {
       [`${type}Id`]: source.id,
       userId,
       kind: source.kind,
