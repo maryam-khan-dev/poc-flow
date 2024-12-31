@@ -10,10 +10,15 @@
   "author": "Maryam Khan",
   "license": "ISC",
   "dependencies": {
+    "argon2": "^0.41.1",
+    "auto-bind": "^5.0.1",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.1.0",
     "mediasoup": "^3.15.2",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.51.0"
+    "redis": "^4.7.0",
+    "redis-om": "^0.4.7",
+    "winston": "^3.17.0",
+    "uWebSockets.js": "https://github.com/uNetworking/uWebSockets.js#v20.51.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9",
