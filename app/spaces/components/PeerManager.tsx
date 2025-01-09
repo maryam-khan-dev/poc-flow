@@ -19,7 +19,7 @@ export default function PeerManager() {
   const { updateUserInfo, device, activeRoom } = useParticipantStore(
     (state) => state
   );
-  const { updateHandlers } = useSocketStore((state) => state);
+  const { updateHandlers, sendRequest } = useSocketStore((state) => state);
   const { data: session } = useSession();
   const peerMessageHandlers: PeerMessageHandlers = useMemo(
     () => ({
@@ -36,16 +36,25 @@ export default function PeerManager() {
         if (!!session?.user)
           updateUserInfo({
             userId: session.user.id!,
-            authStatus: "authenticated",
+            verified: true,
             displayName: session.user.name!,
           });
         else {
-          console.log(contents.userId);
+          const displayName = generateSlug(2, { format: "title" });
           updateUserInfo({
             userId: contents.userId as string,
-            authStatus: "unauthenticated",
-            displayName: generateSlug(2, { format: "title" }),
+            verified: false,
+            displayName,
           });
+          console.log(contents.userId, displayName);
+
+          // Not de-duping this request because there are no side effects
+          // TODO: consider de-duping at sendRequest level
+          sendRequest(
+            "updateDisplayName",
+            { displayName },
+            `${contents.userId}:${displayName}`
+          );
         }
       },
     }),

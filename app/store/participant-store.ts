@@ -42,11 +42,10 @@ type RoomData =
       permissionsGranted: null;
       stream: null;
     };
-type ParticipantAuthStatus = "unauthenticated" | "authenticated";
 type UserInfo = {
   userId: string;
   displayName: string;
-  authStatus: ParticipantAuthStatus;
+  verified: boolean;
 };
 
 export type ParticipantState = {
@@ -98,7 +97,7 @@ export const defaultInitState: ParticipantState = {
   user: {
     userId: "",
     displayName: "",
-    authStatus: "unauthenticated",
+    verified: false,
   },
   activeRoom: defaultActiveRoom,
 };
