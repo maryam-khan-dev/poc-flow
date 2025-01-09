@@ -19,6 +19,8 @@ interface FullRoomInfo {
 interface UserData {
   accessToken?: string;
   userId: string;
+  verified: boolean;
+  displayName: string;
   // rooms: Record<
   //   string,
   //   PeerData
@@ -26,6 +28,11 @@ interface UserData {
   //   //   routerId: string;
   //   // }
   // >;
+}
+interface UserInfo {
+  userId: string;
+  verified: boolean;
+  displayName: string;
 }
 /**
  * @abstract
@@ -42,6 +49,7 @@ interface UserIdUpdate extends ServerUpdate {
   contents: {
     info: string;
     userId: string;
+    verified: boolean;
   };
 }
 
