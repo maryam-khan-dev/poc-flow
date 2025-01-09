@@ -1,4 +1,4 @@
-import { FullRoomInfo, PeerKeyData } from "../../ServerTypes";
+import type { FullRoomInfo, PeerKeyData, UserInfo } from "../../ServerTypes";
 import type { types as MediasoupTypes } from "mediasoup";
 import autoBind from "auto-bind";
 import redis from "../../lib/redis";
@@ -207,14 +207,15 @@ class ServerStateActions {
 
   /**
    * Store the user in server storage
-   * @param userId The user ID of the user
+   * @param userInfo The user information, including user ID and display name
    * @param roomId The room ID of the room they want to join
    */
-  async storeUser(userId: string, roomId: string) {
+  async storeUser(userInfo: UserInfo, roomId: string) {
     // 1. Save peer (user-room connection) information in Redis hash.
+    const { userId } = userInfo;
     logs.debug("Saving user %s in room %s", userId, roomId);
-    const savedPeer: Entity = await peerRepository.save(`${userId}:${roomId}`, {
-      userId,
+    await peerRepository.save(`${userId}:${roomId}`, {
+      ...userInfo,
       roomId,
       producerTransportId: "",
       consumerTransportId: "",
