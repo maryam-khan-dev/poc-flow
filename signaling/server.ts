@@ -375,20 +375,45 @@ async function resumeConsumer(consumerId: string, userId: string) {
     };
   }
 }
+async function updateUser(userId: string, userInfo: Partial<UserInfo>) {
+  try {
+    await state.updateUser(userId, userInfo);
+    return {
+      contents: {
+        info: "Peer updated successfully",
+      },
+      success: true,
+    };
+  } catch (e) {
+    console.error(e);
+    return {
+      contents: {
+        info: "Error updating peer.",
+      },
+      success: false,
+    };
+  }
+}
 async function getProducersForPeer(userId: string, roomId: string) {
   const peersInfo = await state.getProducingRoomPeers(roomId);
-  const producers = peersInfo.map(({ userId, producerId }) => {
-    const { appData } = state.getProducer(producerId!);
-    return {
-      userId,
-      producerId,
-      appData,
-    };
-  });
+  const producers = peersInfo.map(
+    ({ userId, verified, displayName, producerId }) => {
+      const { appData } = state.getProducer(producerId!);
+      return {
+        userId,
+        producerId,
+        displayName,
+        verified,
+        ...appData,
+      };
+    }
+  );
   return {
     contents: {
       info: "Producers retrieved",
-      producers,
+      producers: producers.filter(
+        ({ userId: peerUserId }) => userId !== peerUserId
+      ),
     },
     success: true,
   };
@@ -750,6 +775,23 @@ export const app = SSLApp({
             type: "resumeConsumerUpdate",
             ...(await resumeConsumer(messageInfo.consumerId, userId)),
           });
+          break;
+        case "updateDisplayName":
+          ws.getUserData = () => {
+            return { userId, verified, displayName: messageInfo.displayName };
+          };
+          WebSocketActions.send(ws, {
+            type: "updateDisplayNameUpdate",
+            ...(await updateUser(userId, {
+              displayName: messageInfo.displayName,
+            })),
+          });
+          logs.info(
+            "Updated display name for user ID %s to %s",
+            userId,
+            messageInfo.displayName
+          );
+
           break;
         case "getProducersForPeer":
           if (!(await state.existsRoom(messageInfo.roomId))) {

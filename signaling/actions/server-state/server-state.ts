@@ -67,10 +67,16 @@ class ServerStateActions {
     const peerKeys = await redis.sMembers(`memberPeerKeys:room:${roomId}`);
     const peers = [];
     for (const peerKey of peerKeys) {
-      const { userId, producerId } = await peerRepository.fetch(peerKey);
+      const { userId, producerId, displayName, verified } =
+        await peerRepository.fetch(peerKey);
       if (producerId) {
         // NOT returning consumer since that doesn't seem necessary
-        peers.push({ userId, producerId: producerId as string });
+        peers.push({
+          userId,
+          displayName,
+          verified,
+          producerId: producerId as string,
+        });
       }
     }
     return peers;
@@ -231,6 +237,35 @@ class ServerStateActions {
       ...this.userPeerKeys[userId],
       ...{ [roomId]: `${userId}:${roomId}` },
     };
+  }
+
+  /**
+   * Updates user-related information in all peer records
+   * @param userId The user ID
+   * @param userInfo The new user details
+   */
+  async updateUser(userId: string, userInfo: Partial<UserInfo>) {
+    if (!userId) {
+      logs.warn(
+        "User ID empty, could not update user. User info: %O",
+        userInfo
+      );
+      return;
+    }
+    const peerKeys = await redis.sMembers(`peerKeys:user:${userId}`);
+    for (const peerKey of peerKeys) {
+      const currentPeerInfo = await peerRepository.fetch(peerKey);
+      if (!currentPeerInfo) {
+        logs.warn("Could not fetch peer info for peer key %s", peerKey);
+        return;
+      }
+      const { roomId } = currentPeerInfo;
+      logs.debug("Updating user %s in room %s", userId, roomId);
+      await peerRepository.save(`${userId}:${roomId}`, {
+        ...currentPeerInfo,
+        ...userInfo,
+      });
+    }
   }
 
   /**
