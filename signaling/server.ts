@@ -641,7 +641,6 @@ export const app = SSLApp({
             );
             return;
           }
-          console.log("Sending a produceUpdate");
           WebSocketActions.send(ws, {
             type: "produceUpdate",
             ...(await produce(
