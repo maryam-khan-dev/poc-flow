@@ -13,11 +13,6 @@ interface PeerSchema extends Entity {
   producerId: string;
   consumerId: string;
 }
-interface UserSchema extends Entity {
-  accessToken?: string;
-  userId: string;
-  rooms: Record<string, PeerSchema>;
-}
 interface RouterSchema extends Entity {
   config: string;
 }
