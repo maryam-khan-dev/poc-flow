@@ -26,7 +26,7 @@ const state = ServerState.getInstance();
 
 async function createWorkers() {
   try {
-    const workers = await mediasoupHandler.createWorkers(
+    await mediasoupHandler.createWorkers(
       config.numWorkers,
       config.workerSettings
     );
@@ -105,12 +105,6 @@ async function joinExistingRoom(roomId: string, userInfo: UserInfo) {
 async function createWebRtcTransports(room: FullRoomInfo, userId: string) {
   const { webRtcTransport } = config;
   try {
-    logs.info(
-      "Creating WebRTC transports with %s %O %s",
-      room.router?.id,
-      webRtcTransport,
-      userId
-    );
     const producerTransport = await mediasoupHandler.createWebRtcTransport(
       room.router,
       webRtcTransport,
@@ -138,6 +132,7 @@ async function createWebRtcTransports(room: FullRoomInfo, userId: string) {
     return {
       contents: {
         info: "WebRTC transports created",
+        roomId: room.id,
         producerTransportOptions: {
           id: producerTransport.id,
           iceParameters: producerTransport.iceParameters,
@@ -166,15 +161,14 @@ async function createWebRtcTransports(room: FullRoomInfo, userId: string) {
 }
 async function connectTransport(
   dtlsParameters: MediasoupTypes.DtlsParameters,
-  transportId: string,
-  userId: string
+  transportId: string
 ) {
   try {
     await mediasoupHandler.connectTransport(
       state.getTransport(transportId),
-      dtlsParameters,
-      userId
+      dtlsParameters
     );
+
     return {
       contents: {
         info: "Transport connected",
@@ -217,6 +211,8 @@ async function produce(
         info: "Producer created",
         producerId: producer.id,
         producerTransportId,
+        ...producer.appData,
+        kind: producer.kind,
       },
       success: true,
     };
@@ -632,8 +628,7 @@ export const app = SSLApp({
             type: "connectTransportUpdate",
             ...(await connectTransport(
               messageInfo.dtlsParameters,
-              messageInfo.transportId,
-              userId
+              messageInfo.transportId
             )),
           });
           break;
@@ -642,11 +637,10 @@ export const app = SSLApp({
             WebSocketActions.sendError(
               ws,
               "produceUpdate",
-              WS_ERRORS.ROOM_NON_EXISTENT
+              `${WS_ERRORS.ROOM_NON_EXISTENT}: ${messageInfo.roomId}`
             );
             return;
           }
-
           WebSocketActions.send(ws, {
             type: "produceUpdate",
             ...(await produce(
@@ -836,7 +830,7 @@ export const app = SSLApp({
           logs.warn("exitRoom not implemented yet");
           break;
         default:
-          console.log("Unknown message type");
+          logs.warn("Unknown message type %O", messageInfo);
           break;
       }
     },

@@ -10,9 +10,8 @@ import {
   routerRepository,
   transportRepository,
 } from "./repositories";
-import { Entity, EntityId } from "redis-om";
-import { publishCheckRequest } from "./cleanup/producer";
 import logs from "../../lib/logger";
+import { publishCheckRequest } from "./cleanup/producer";
 class ServerStateActions {
   userPeerKeys: Record<string, PeerKeyData> = {};
   routers: Record<string, MediasoupTypes.Router> = {};
@@ -146,7 +145,7 @@ class ServerStateActions {
     await routerRepository.remove(routerId);
 
     // 2. Remove Mediasoup router itself from local memory.
-    const { [routerId]: router, ...others } = this.routers;
+    const { [routerId]: _router, ...others } = this.routers;
     this.routers = { ...others };
     logs.info("Removed router %s from state", routerId);
   }
@@ -186,7 +185,7 @@ class ServerStateActions {
         ? onlyIncludeRooms
         : Object.keys(this.userPeerKeys[userId] ?? {});
 
-    for (let roomId of roomsToInclude) {
+    for (const roomId of roomsToInclude) {
       if (!this.userPeerKeys[userId]?.[roomId]) {
         console.error("Peer key for roomnot found! Cannot get user presence.");
         continue;
@@ -312,7 +311,7 @@ class ServerStateActions {
     await publishCheckRequest(userId, "user");
     await publishCheckRequest(roomId, "room");
 
-    const { [roomId]: room, ...others } = this.userPeerKeys[userId];
+    const { [roomId]: _room, ...others } = this.userPeerKeys[userId];
     this.userPeerKeys[userId] = { ...others };
     logs.info(
       "Removed peer %s. In-memory userPeerKeys now %O",
@@ -335,7 +334,7 @@ class ServerStateActions {
    */
   async removeUser(userId: string) {
     const peerKeys = await redis.sMembers(`peerKeys:user:${userId}`);
-    for (let peerKey of peerKeys) {
+    for (const peerKey of peerKeys) {
       logs.warn(`REMOVING USER PEER FROM SERVER STATE ---> %O`, {
         peerKey,
         userId,
@@ -396,7 +395,7 @@ class ServerStateActions {
   async removeTransport(transportId: string) {
     if (!this.transports[transportId]) return;
 
-    const { [transportId]: transportToRemove, ...others } = this.transports;
+    const { [transportId]: _transportToRemove, ...others } = this.transports;
 
     // 1. Remove transport from Redis transport hash.
     await transportRepository.remove(transportId);
@@ -463,7 +462,7 @@ class ServerStateActions {
    */
   async removeProducer(producerId: string) {
     if (!this.producers[producerId]) return;
-    const { [producerId]: producerToRemove, ...others } = this.producers;
+    const { [producerId]: _producerToRemove, ...others } = this.producers;
 
     // 1. Remove producer from Redis producer hash.
     await producerRepository.remove(producerId);
@@ -496,7 +495,7 @@ class ServerStateActions {
     transportId: string,
     config: Record<string, unknown>
   ) {
-    const savedConsumer: Entity = await consumerRepository.save(consumer.id, {
+    await consumerRepository.save(consumer.id, {
       peerKey: this.userPeerKeys[userId][roomId],
       roomId,
       transportId,
@@ -530,7 +529,7 @@ class ServerStateActions {
    */
   async removeConsumer(consumerId: string) {
     if (!this.consumers[consumerId]) return;
-    const { [consumerId]: consumerToRemove, ...others } = this.consumers;
+    const { [consumerId]: _consumerToRemove, ...others } = this.consumers;
     // 1. Remove consumer from Redis consumer hash.
     await consumerRepository.remove(consumerId);
 
