@@ -71,6 +71,7 @@ interface UserIdUpdate extends BaseUpdateSignal {
   contents: {
     userId: string;
     info: string;
+    verified: boolean;
   };
 }
 interface EnterRoomUpdate extends BaseUpdateSignal {

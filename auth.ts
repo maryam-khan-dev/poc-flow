@@ -7,7 +7,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorization:
         "https://accounts.spotify.com/authorize?scope=user-read-email%20user-library-read%20playlist-read-private%20user-read-private",
       async profile(profile: SpotifyProfile, tokens) {
-        console.log(tokens);
         return {
           id: profile.id,
           name: profile.display_name,
