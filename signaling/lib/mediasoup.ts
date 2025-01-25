@@ -130,7 +130,7 @@ export default class Mediasoup {
       throw new WebRtcTransportCreationError(userId, webRtcTransportOptions);
     }
     const { id: transportId, type } = transport;
-    logs.debug("Transport created", { transportId, transportType: type });
+    logs.info("Transport created", { transportId, transportType: type });
 
     transport.on("icestatechange", (iceState: MediasoupTypes.IceState) => {
       if (iceState === "disconnected" || iceState === "closed") {
@@ -162,8 +162,8 @@ export default class Mediasoup {
       }
     });
 
-    transport.observer.on("close", () => {
-      logs.debug("Transport closed", { userId, transportId });
+    transport.on("@close", () => {
+      logs.info("Transport closed", { userId, transportId });
     });
 
     return transport;
@@ -176,12 +176,10 @@ export default class Mediasoup {
    * @param userId The user ID associated with this connection.
    */
   async connectTransport(
-    transport: MediasoupTypes.Transport,
-    dtlsParameters: MediasoupTypes.DtlsParameters,
-    userId: string
+    transport: MediasoupTypes.WebRtcTransport,
+    dtlsParameters: MediasoupTypes.DtlsParameters
   ) {
     await transport.connect({ dtlsParameters });
-    logs.debug("Connect transport", { userId, transportId: transport.id });
   }
 
   /**

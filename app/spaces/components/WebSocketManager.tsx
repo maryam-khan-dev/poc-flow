@@ -63,7 +63,7 @@ export default function WebSocketManager({
         if (handler) {
           Promise.resolve(handler(message));
         } else {
-          console.log("Unknown message type", message.type);
+          console.log("Unknown message type", message.type, message);
         }
       };
     }

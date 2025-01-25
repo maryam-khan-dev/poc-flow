@@ -19,8 +19,8 @@ const config = {
       "svc",
       "sctp",
     ],
-    rtcMinPort: 40_000,
-    rtcMaxPort: 40_100,
+    rtcMinPort: 45000,
+    rtcMaxPort: 45100,
     disableLiburing: false, // https://github.com/axboe/liburing
   } as MediasoupTypes.WorkerSettings,
   routerMediaCodecs: [
@@ -55,14 +55,16 @@ const config = {
       {
         protocol: "udp",
         ip: "0.0.0.0",
-        announcedAddress: process.env.ANNOUNCED_ADDRESS,
-        portRange: { min: 40000, max: 40100 },
+        announcedAddress: "127.0.0.1",
+        // announcedAddress: process.env.ANNOUNCED_ADDRESS,
+        portRange: { min: 45000, max: 45000 + os.cpus().length },
       },
       {
         protocol: "tcp",
         ip: "0.0.0.0",
-        announcedAddress: process.env.ANNOUNCED_ADDRESS,
-        portRange: { min: 40000, max: 40100 },
+        announcedAddress: "127.0.0.1",
+        // announcedAddress: process.env.ANNOUNCED_ADDRESS,
+        portRange: { min: 45000, max: 45000 + os.cpus().length },
       },
     ],
     initialAvailableOutgoingBitrate: 1000000,

@@ -8,11 +8,14 @@ services:
       file: docker-compose.base.yaml
       service: app
     ports:
-      - 3001:3001
+      - "3001:3001/tcp"
+      - "45000-45100:45000-45100/tcp"
+      - "45000-45100:45000-45100/udp"
     environment:
       NODE_EXTRA_CA_CERTS: "/app/config/cert.pem"
       PORT: 3001
       ANNOUNCED_ADDRESS: 127.0.0.1
+      LISTEN_IP: 10.0.0.46
       # ANNOUNCED_ADDRESS: Elastic IP OR Public Static IP of server hosting this app
     volumes:
       - type: bind
