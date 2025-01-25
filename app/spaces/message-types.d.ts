@@ -28,12 +28,36 @@ interface ProduceRequest extends BaseRequestSignal {
   appData: Record<string, unknown>;
   rtpParameters: MediasoupClientTypes.RtpParameters;
 }
+interface ConsumeRequest extends BaseRequestSignal {
+  type: "consume";
+  consumerTransportId: string;
+  roomId: string;
+  producerId: string;
+  rtpCapabilities: MediasoupClientTypes.RtpCapabilities;
+}
+interface ResumeConsumerRequest extends BaseRequestSignal {
+  type: "resumeConsumer";
+  consumerId: string;
+}
+interface UpdateDisplayNameRequest extends BaseRequestSignal {
+  type: "updateDisplayName";
+  displayName: string;
+}
+
+interface GetProducersRequest extends BaseRequestSignal {
+  type: "getProducers";
+  roomId: string;
+}
 export type RequestSignal =
   | CreateRoomRequest
   | JoinRoomRequest
   | CreateWebRtcTransportsRequest
   | ConnectTransportRequest
-  | ProduceRequest;
+  | ProduceRequest
+  | UpdateDisplayNameRequest
+  | GetProducersRequest
+  | ConsumeRequest
+  | ResumeConsumerRequest;
 export type RequestSignalTypes = Pick<RequestSignal, "type">["type"];
 interface BaseUpdateSignal {
   type: string;
@@ -75,6 +99,18 @@ interface ProduceUpdate extends BaseUpdateSignal {
     // TODO: sync with appData
   };
 }
+interface ConsumeUpdate extends BaseUpdateSignal {
+  type: "consumeUpdate";
+  contents: {
+    info: string;
+    id: string;
+    kind: "audio" | "video";
+    rtpParameters: MediasoupClientTypes.RtpParameters;
+    type: string;
+    producer: MediasoupTypes.Producer;
+    consumerTransportId: string;
+  };
+}
 interface ProducerClosedUpdate extends BaseUpdateSignal {
   type: "producerClosedUpdate";
   contents: {
@@ -89,11 +125,29 @@ interface ConnectTransportUpdate extends BaseUpdateSignal {
     info: string;
   };
 }
+interface PeerProducerInfo {
+  displayName: string;
+  verified: boolean;
+  producers: {
+    [kind: "audio" | "video"]: string;
+  };
+}
+interface ProducersUpdate extends BaseUpdateSignal {
+  type: "producersUpdate";
+  contents: {
+    info: string;
+    roomId: string;
+    producers: Record<string, PeerProducerInfo>;
+  };
+  success: boolean;
+}
 export type UpdateSignal =
   | UserIdUpdate
   | EnterRoomUpdate
   | WebRtcTransportsUpdate
   | ProduceUpdate
   | ProducerClosedUpdate
-  | ConnectTransportUpdate;
+  | ConnectTransportUpdate
+  | ProducersUpdate
+  | ConsumeUpdate;
 export type UpdateSignalTypes = Pick<UpdateSignal, "type">["type"];

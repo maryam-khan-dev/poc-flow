@@ -118,7 +118,13 @@ export function createRecvTransport(
 ) {
   const consumerTransport = device.createRecvTransport(transportOptions);
   consumerTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
-    additionalHandlers.connect(consumerTransport.id, dtlsParameters);
+    try {
+      additionalHandlers.connect(consumerTransport.id, dtlsParameters);
+      callback();
+    } catch (err) {
+      console.error("Error in connect", err);
+      errback(err as unknown as Error);
+    }
   });
 
   consumerTransport.on(

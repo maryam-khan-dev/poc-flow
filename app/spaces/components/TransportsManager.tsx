@@ -209,7 +209,7 @@ export default function TransportsManager() {
           if (!getRequest("connectTransport", transportId)) {
             sendRequest(
               "connectTransport",
-              { transportId, dtlsParameters },
+              { transportId, dtlsParameters, roomId: activeRoom.id },
               transportId
             );
           }
@@ -221,7 +221,12 @@ export default function TransportsManager() {
           stateChangeHandlers.consumerTransport[state]?.(consumerTransport);
         },
       }),
-      [sendRequest, stateChangeHandlers.consumerTransport]
+      [
+        activeRoom.id,
+        getRequest,
+        sendRequest,
+        stateChangeHandlers.consumerTransport,
+      ]
     );
   const transportMessageHandlers: TransportsMessageHandlers = useMemo(
     () => ({
