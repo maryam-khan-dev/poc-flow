@@ -23,20 +23,20 @@ export type TransportHandlers = {
   connect: (
     transportId: string,
     dtlsParameters: MediasoupClientTypes.DtlsParameters
-  ) => void | Promise<void>;
+  ) => void;
   produce: (
     transportId: string,
     producerOptions: MediasoupServerTypes.ProducerOptions,
     callback: ({ id }: { id: string }) => void,
     errback: Errback
-  ) => void | Promise<void>;
+  ) => void;
   connectionstatechange: (
     state: MediasoupClientTypes.ConnectionState,
     producerTransport: MediasoupClientTypes.Transport
   ) => void;
 };
 export type TransportsMessageHandlers = Partial<
-  Record<UpdateSignalTypes, (message: UpdateSignal) => void | Promise<void>>
+  Record<UpdateSignalTypes, (message: UpdateSignal) => void>
 >;
 
 export default function TransportsManager() {
@@ -127,7 +127,7 @@ export default function TransportsManager() {
   );
   const producerTransportHandlers: TransportHandlers = useMemo(
     () => ({
-      connect: async (
+      connect: (
         transportId: string,
         dtlsParameters: MediasoupClientTypes.DtlsParameters
       ) => {
@@ -139,7 +139,7 @@ export default function TransportsManager() {
           );
         }
       },
-      produce: async (transportId, producerOptions, callback, errback) => {
+      produce: (transportId, producerOptions, callback, errback) => {
         const { kind, appData } = producerOptions;
         const { deviceLabel } = appData as {
           deviceLabel: string;
@@ -206,13 +206,13 @@ export default function TransportsManager() {
           transportId: string,
           dtlsParameters: MediasoupClientTypes.DtlsParameters
         ) => {
-          try {
+          if (!getRequest("connectTransport", transportId)) {
             sendRequest(
               "connectTransport",
               { transportId, dtlsParameters },
               transportId
             );
-          } catch (err) {}
+          }
         },
         connectionstatechange: (
           state: MediasoupClientTypes.ConnectionState,

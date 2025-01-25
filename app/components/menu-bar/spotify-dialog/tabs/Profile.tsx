@@ -1,13 +1,13 @@
 "use client";
 
-import { Avatar } from "../../ui/avatar";
-import TabContentContainer from "./TabContentContainer";
 import useSWR from "swr";
 import { Heading, HStack, Text, VStack } from "@chakra-ui/react";
-import LoadingCircle from "../../ui/loading-circle";
 import { LuDot, LuMapPin } from "react-icons/lu";
 import { Tag } from "@/app/components/ui/tag";
 import { fetcher } from "@/app/lib/fetcher";
+import TabContentContainer from "../common/TabContentContainer";
+import { Avatar } from "@/app/components/ui/avatar";
+import LoadingCircle from "@/app/components/ui/loading-circle";
 
 export default function Profile({
   children: logoutButton,

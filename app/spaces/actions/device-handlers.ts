@@ -78,14 +78,14 @@ export function createSendTransport(
   );
   producerTransport.on(
     "produce",
-    async ({ kind, appData, rtpParameters }, callback, errback) => {
+    ({ kind, appData, rtpParameters }, callback, errback) => {
       console.log(
         "producerTransport.on('produce') event: ",
         kind,
         appData,
         producerTransport.id
       );
-      await additionalHandlers.produce(
+      additionalHandlers.produce(
         producerTransport.id,
         { kind, appData, rtpParameters },
         callback,
