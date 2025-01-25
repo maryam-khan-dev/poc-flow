@@ -28,19 +28,22 @@ export type SocketState = {
 export type SocketActions = {
   setWebsocket: (ws: WebSocket) => void;
   connect: () => void;
-  getRequest(requestType: RequestSignalTypes, requestId: string): RequestState;
-  storeRequest(requestType: RequestSignalTypes, requestId: string): void;
-  updateRequestState(
+  getRequest: (
+    requestType: RequestSignalTypes,
+    requestId: string
+  ) => RequestState;
+  storeRequest: (requestType: RequestSignalTypes, requestId: string) => void;
+  updateRequestState: (
     requestType: RequestSignalTypes,
     requestId: string,
     requestState: RequestState
-  ): void;
-  sendRequest(
+  ) => void;
+  sendRequest: (
     requestType: RequestSignalTypes,
     additionalData: Record<string, unknown>,
     identifier: string
-  ): void;
-  updateHandlers(handlers: Partial<MessageHandlers>): void;
+  ) => void;
+  updateHandlers: (handlers: Partial<MessageHandlers>) => void;
 };
 
 export type SocketStore = SocketState & SocketActions;

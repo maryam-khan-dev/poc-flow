@@ -3,6 +3,16 @@ import { types as MediasoupClientTypes } from "mediasoup-client";
 export type Callback = (...args: unknown[]) => void;
 export type Errback = (error: Error) => void;
 import { MessageHandlers } from "@/app/spaces/components/WebSocketManager";
+import { Simplify } from "type-fest";
+import { PeerProducerInfo } from "@/app/spaces/message-types";
+type PeerInfo = Simplify<
+  PeerProducerInfo & {
+    consumers: {
+      video?: MediasoupClientTypes.Consumer;
+      audio?: MediasoupClientTypes.Consumer;
+    };
+  }
+>;
 type RoomData =
   | {
       id: string;
@@ -14,10 +24,7 @@ type RoomData =
         video?: MediasoupClientTypes.Producer;
         audio?: MediasoupClientTypes.Producer;
       };
-      consumers: {
-        video: MediasoupClientTypes.Consumer;
-        audio: MediasoupClientTypes.Consumer;
-      };
+      peers: Record<string, PeerInfo>;
       transportCallbacks: Record<string, Record<string, Callback>>;
       transportErrbacks: Record<string, Record<string, Errback>>;
       permissionsGranted: boolean;
@@ -33,10 +40,7 @@ type RoomData =
         video?: null;
         audio?: null;
       };
-      consumers: {
-        video?: null;
-        audio?: null;
-      };
+      peers: Record<string, never>;
       transportCallbacks: Record<string, never>;
       transportErrbacks: Record<string, never>;
       permissionsGranted: null;
@@ -70,6 +74,10 @@ export type ParticipantActions = {
     transportId: string,
     errback: Errback
   ) => void;
+  addPeerConsumer: (
+    userId: string,
+    consumer: MediasoupClientTypes.Consumer
+  ) => void;
 };
 
 export type ParticipantStore = ParticipantState & ParticipantActions;
@@ -83,10 +91,7 @@ const defaultActiveRoom: RoomData = {
     video: null,
     audio: null,
   },
-  consumers: {
-    video: null,
-    audio: null,
-  },
+  peers: {},
   transportCallbacks: {},
   transportErrbacks: {},
   permissionsGranted: null,
@@ -158,5 +163,25 @@ export const createParticipantStore = (
       }),
     setMessageHandlers: (handlers: MessageHandlers) =>
       set((state) => ({ ...state, messageHandlers: handlers })),
+    addPeerConsumer: (
+      userId: string,
+      consumer: MediasoupClientTypes.Consumer
+    ) =>
+      set((state) => {
+        const { activeRoom } = state;
+        const { kind } = consumer;
+        const currentPeerInfo = activeRoom.peers?.[userId] ?? {};
+        const currentConsumers = activeRoom.peers?.[userId]?.consumers ?? {};
+        return {
+          ...state,
+          peers: {
+            ...activeRoom.peers,
+            [userId]: {
+              ...currentPeerInfo,
+              consumers: { ...currentConsumers, [kind]: consumer },
+            },
+          },
+        };
+      }),
   }));
 };

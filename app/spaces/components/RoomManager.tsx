@@ -20,9 +20,8 @@ export default function RoomManager() {
   const { device, user, updateRoomInfo } = useParticipantStore(
     (state) => state
   );
-  const { sendRequest, updateRequestState, updateHandlers } = useSocketStore(
-    (state) => state
-  );
+  const { sendRequest, getRequest, updateRequestState, updateHandlers } =
+    useSocketStore((state) => state);
   const enterRoom = useCallback(
     async (contents: EnterRoomUpdate["contents"]) => {
       if (!device) {
