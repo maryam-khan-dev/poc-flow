@@ -74,19 +74,20 @@ export default function PermissionsPrompt() {
   const [error, setError] = useState<string | null>(null);
   const { updateRoomInfo, activeRoom } = useParticipantStore((state) => state);
   useEffect(() => {
-    hasGrantedPermissions().then((granted) => {
-      setPermissionsGranted(granted);
-      getUserMedia().then(({ ok, stream, error }) => {
-        console.log("stream", stream);
-        if (ok) {
-          updateRoomInfo({ stream });
-          setPermissionsGranted(true);
-        } else if (error) {
-          setError(error);
-        }
+    if (!activeRoom.stream)
+      hasGrantedPermissions().then((granted) => {
+        setPermissionsGranted(granted);
+        getUserMedia().then(({ ok, stream, error }) => {
+          console.log("stream", stream);
+          if (ok) {
+            updateRoomInfo({ stream });
+            setPermissionsGranted(true);
+          } else if (error) {
+            setError(error);
+          }
+        });
       });
-    });
-  }, [updateRoomInfo]);
+  }, [updateRoomInfo, activeRoom.stream]);
   return (
     <>
       <DialogRoot placement="center" size="xl" open={!permissionsGranted}>

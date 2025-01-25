@@ -152,17 +152,14 @@ export async function getUserMedia() {
 export async function produce(
   device: MediasoupClientTypes.Device,
   producerTransport: MediasoupClientTypes.Transport,
-  producerEventHandlers: ProducerEventHandlers
+  producerEventHandlers: ProducerEventHandlers,
+  stream: MediaStream
 ) {
   if (!device.canProduce("video") && !device.canProduce("audio")) {
     console.error("Device can't produce audio or video");
     return { ok: false, error: "Your devices can't produce audio or video." };
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: true,
-    });
     const videoTrack = stream.getVideoTracks()[0];
     const audioTrack = stream.getAudioTracks()[0];
     const videoProducer = await producerTransport.produce({
