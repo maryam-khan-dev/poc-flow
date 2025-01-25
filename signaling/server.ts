@@ -6,6 +6,7 @@ import {
   FullRoomInfo,
   GetPeersCountUpdate,
   PeerData,
+  ProducerInfo,
   UserData,
   UserIdUpdate,
   UserInfo,
@@ -391,24 +392,26 @@ async function updateUser(userId: string, userInfo: Partial<UserInfo>) {
 }
 async function getProducersForPeer(userId: string, roomId: string) {
   const peersInfo = await state.getProducingRoomPeers(roomId);
-  const producers = peersInfo.map(
-    ({ userId, verified, displayName, producerId }) => {
-      const { appData } = state.getProducer(producerId!);
-      return {
-        userId,
-        producerId,
+  const producers = peersInfo.reduce((acc, peer) => {
+    const { userId: peerUserId, producerId, displayName, verified } = peer;
+    // skip current user
+    if (userId === peerUserId) return acc;
+    const { kind } = state.getProducer(producerId!);
+    return {
+      ...acc,
+      [userId]: {
+        ...acc[userId],
         displayName,
         verified,
-        ...appData,
-      };
-    }
-  );
+        producers: { ...acc[userId].producers, [kind]: producerId },
+      },
+    };
+  }, {} as Record<string, ProducerInfo>);
   return {
     contents: {
       info: "Producers retrieved",
-      producers: producers.filter(
-        ({ userId: peerUserId }) => userId !== peerUserId
-      ),
+      roomId,
+      producers,
     },
     success: true,
   };
@@ -786,18 +789,18 @@ export const app = SSLApp({
           );
 
           break;
-        case "getProducersForPeer":
+        case "getProducers":
           if (!(await state.existsRoom(messageInfo.roomId))) {
             WebSocketActions.sendError(
               ws,
-              "getProducersUpdate",
+              "producersUpdate",
               WS_ERRORS.ROOM_NON_EXISTENT
             );
             return;
           }
 
           WebSocketActions.send(ws, {
-            type: "getProducersUpdate",
+            type: "producersUpdate",
             ...(await getProducersForPeer(userId, messageInfo.roomId)),
           });
           break;

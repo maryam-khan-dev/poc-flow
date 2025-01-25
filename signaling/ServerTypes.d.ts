@@ -34,6 +34,12 @@ interface UserInfo {
   verified: boolean;
   displayName: string;
 }
+
+interface ProducerInfo {
+  displayName: string;
+  verified: boolean;
+  producers: Record<MediaKind, string>;
+}
 /**
  * @abstract
  * Base interface for all server-update messages sent from the server to the client.

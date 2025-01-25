@@ -9,12 +9,57 @@ import type {
   UpdateSignal,
 } from "@/app/spaces/message-types";
 import { useSocketStore } from "@/app/spaces/components/SocketStoreProvider";
-import { REQUEST_STATUS } from "@/app/store/socket-store";
+import { REQUEST_STATUS, SocketActions } from "@/app/store/socket-store";
+import { UserInfo } from "@/signaling/ServerTypes";
+export type ProducerEventHandlers = Record<
+  string,
+  (producerId: string) => void
+>;
+export type ProducerHandlerCreator = (
+  sendRequest: SocketActions["sendRequest"],
+  user: UserInfo
+) => ProducerEventHandlers;
+
+export const createEventHandlers: ProducerHandlerCreator = (
+  _sendRequest: SocketActions["sendRequest"],
+  _user: UserInfo
+) => ({
+  trackended: (producerId) => {
+    console.log("Track ended", producerId);
+    // USE SOCKET STORE
+    // socket!.send(
+    //   JSON.stringify({
+    //     type: "producerClosed",
+    //     producerId,
+    //     userId: user?.userId,
+    //   })
+    // );
+  },
+  transportclose: (producerId) => {
+    console.log("Transport closed", producerId);
+    // socket!.send(
+    //   JSON.stringify({
+    //     type: "producerClosed",
+    //     producerId,
+    //     userId: user?.userId,
+    //   })
+    // );
+  },
+  close: (producerId) => {
+    console.log("Producer closed", producerId);
+    // socket!.send(
+    //   JSON.stringify({
+    //     type: "producerClosed",
+    //     producerId,
+    //     userId: user?.userId,
+    //   })
+    // );
+  },
+});
 
 export type ProducerMessageHandlers = Partial<
   Record<UpdateSignalTypes, (message: UpdateSignal) => void | Promise<void>>
 >;
-
 export default function ProducerManager() {
   const { device, user, activeRoom, updateRoomInfo } = useParticipantStore(
     (state) => state

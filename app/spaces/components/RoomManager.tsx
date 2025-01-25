@@ -7,6 +7,7 @@ import type {
   EnterRoomUpdate,
   UpdateSignalTypes,
   UpdateSignal,
+  ProducersUpdate,
 } from "@/app/spaces/message-types";
 import { useSocketStore } from "@/app/spaces/components/SocketStoreProvider";
 import { REQUEST_STATUS } from "@/app/store/socket-store";
@@ -57,23 +58,26 @@ export default function RoomManager() {
     () => ({
       joinRoomUpdate: async (message) => {
         const { success, contents: roomDetails } = message as EnterRoomUpdate;
+        const { roomId } = roomDetails;
         console.log(roomDetails);
+
         if (!success) {
           toaster.error({
             title: "Error joining room",
             description: "Check the server logs for more information.",
           });
-          updateRequestState("joinRoom", roomDetails.roomId, {
+          updateRequestState("joinRoom", roomId, {
             status: REQUEST_STATUS.FAILURE,
             info: roomDetails.info,
           });
           return;
         }
-        updateRequestState("joinRoom", roomDetails.roomId, {
+        updateRequestState("joinRoom", roomId, {
           status: REQUEST_STATUS.SUCCESS,
           info: roomDetails.info,
         });
         await enterRoom(roomDetails);
+        sendRequest("getProducers", { roomId }, `${user?.userId}:${roomId}`);
       },
       createRoomUpdate: async (message) => {
         const { success, contents: roomDetails } = message as EnterRoomUpdate;
@@ -94,8 +98,51 @@ export default function RoomManager() {
         });
         await enterRoom(roomDetails);
       },
+      producersUpdate: async (message) => {
+        const { success, contents } = message as ProducersUpdate;
+        if (!success) {
+          toaster.error({
+            title: "Error getting producers",
+            description: "Check the server logs for more information.",
+          });
+          // Only update request state if a request was made - as this message can be sent multiple times
+          if (
+            getRequest("getProducers", `${user?.userId}:${contents.roomId}`)
+          ) {
+            updateRequestState(
+              "getProducers",
+              `${user?.userId}:${contents.roomId}`,
+              {
+                status: REQUEST_STATUS.FAILURE,
+                info: contents.info,
+              }
+            );
+          }
+          return;
+        }
+        // Only update request state if a request was made - as this message can be sent multiple times
+        if (getRequest("getProducers", `${user?.userId}:${contents.roomId}`)) {
+          updateRequestState(
+            "getProducers",
+            `${user?.userId}:${contents.roomId}`,
+            {
+              status: REQUEST_STATUS.SUCCESS,
+              info: contents.info,
+            }
+          );
+        }
+        console.log(contents.producers);
+        updateRoomInfo({ peers: contents.producers });
+      },
     }),
-    [enterRoom, updateRequestState]
+    [
+      enterRoom,
+      getRequest,
+      sendRequest,
+      updateRequestState,
+      updateRoomInfo,
+      user?.userId,
+    ]
   );
   useEffect(() => {
     if (device && user) updateHandlers(messageHandlers);

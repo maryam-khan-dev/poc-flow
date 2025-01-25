@@ -1,51 +1,22 @@
 "use client";
-import { produce } from "@/app/spaces/actions/device-handlers";
+import { consume, produce } from "@/app/spaces/actions/device-handlers";
 import { useParticipantStore } from "@/app/spaces/components/ParticipantStoreProvider";
-import type { ProducerEventHandlers } from "@/app/spaces/join/setup/page";
-import Me from "@/app/spaces/room/[roomId]/components/Me";
+import UserStream from "@/app/spaces/room/[roomId]/components/UserStream";
 import PermissionsPrompt from "@/app/spaces/room/[roomId]/components/PermissionsPrompt";
+import { Grid, VStack } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef } from "react";
+import { createEventHandlers as createProducerEventHandlers } from "@/app/spaces/components/ProducerManager";
+import { useSocketStore } from "@/app/spaces/components/SocketStoreProvider";
 
 export default function RoomPage() {
   const sentProduce = useRef(false);
-  const { device, activeRoom, updateRoomInfo } = useParticipantStore(
+  const { device, activeRoom, updateRoomInfo, user } = useParticipantStore(
     (state) => state
   );
-  const producerEventHandlers: ProducerEventHandlers = useMemo(
-    () => ({
-      trackended: (producerId) => {
-        console.log("Track ended", producerId);
-        // USE SOCKET STORE
-        // socket!.send(
-        //   JSON.stringify({
-        //     type: "producerClosed",
-        //     producerId,
-        //     userId: user?.userId,
-        //   })
-        // );
-      },
-      transportclose: (producerId) => {
-        console.log("Transport closed", producerId);
-        // socket!.send(
-        //   JSON.stringify({
-        //     type: "producerClosed",
-        //     producerId,
-        //     userId: user?.userId,
-        //   })
-        // );
-      },
-      close: (producerId) => {
-        console.log("Producer closed", producerId);
-        // socket!.send(
-        //   JSON.stringify({
-        //     type: "producerClosed",
-        //     producerId,
-        //     userId: user?.userId,
-        //   })
-        // );
-      },
-    }),
-    []
+  const { sendRequest } = useSocketStore((state) => state);
+  const producerHandlers = useMemo(
+    () => createProducerEventHandlers(sendRequest, user),
+    [sendRequest, user]
   );
   useEffect(() => {
     const produceMedia = async () => {
@@ -53,7 +24,8 @@ export default function RoomPage() {
       const { ok, error, producers } = await produce(
         device!,
         activeRoom.producerTransport!,
-        producerEventHandlers
+        producerHandlers,
+        activeRoom.stream!
       );
       if (!ok) {
         console.error("Error producing", error);
@@ -63,14 +35,21 @@ export default function RoomPage() {
         });
       }
     };
-    if (device && activeRoom.producerTransport && !sentProduce.current)
+    if (
+      device &&
+      activeRoom.producerTransport &&
+      activeRoom.stream &&
+      !sentProduce.current
+    )
       produceMedia();
   }, [
     activeRoom.producerTransport,
     device,
     activeRoom.stream,
-    producerEventHandlers,
     updateRoomInfo,
+    sendRequest,
+    user,
+    producerHandlers,
   ]);
   return (
     <div>

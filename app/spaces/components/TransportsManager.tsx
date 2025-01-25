@@ -166,7 +166,7 @@ export default function TransportsManager() {
                 producerTransportId: transportId,
                 roomId: activeRoom.id,
                 kind,
-                appData,
+                appData: { ...appData, userId: user?.userId },
                 rtpParameters,
               },
               `${deviceLabel}:${kind}`
